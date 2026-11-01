@@ -1,0 +1,306 @@
+{
+  "brand": "Spice Smash",
+  "tagline": "Smashed burgers. Big masala energy.",
+  "currency": "€",
+  "deliveryFee": 2.5,
+  "freeDeliveryOver": 25,
+  "minDeliveryOrder": 10,
+  "categories": [
+    { "id": "burgers", "name": "Burgers", "emoji": "🍔" },
+    { "id": "sides", "name": "Sides", "emoji": "🍟" },
+    { "id": "drinks", "name": "Shakes & Drinks", "emoji": "🥤" },
+    { "id": "desserts", "name": "Desserts", "emoji": "🍨" }
+  ],
+  "sizes": {
+    "standard": [
+      { "id": "s", "name": "Small", "delta": 0 },
+      { "id": "m", "name": "Medium", "delta": 0.8 },
+      { "id": "l", "name": "Large", "delta": 1.5 }
+    ]
+  },
+  "items": [
+    {
+      "id": "classic-smash",
+      "category": "burgers",
+      "name": "Classic Smash",
+      "description": "Two smashed beef patties, melted cheddar, pickles, onion and our house sauce on a toasted potato bun.",
+      "price": 6.9,
+      "emoji": "🍔",
+      "calories": 720,
+      "tags": [],
+      "removals": ["Pickles", "Onions", "Cheese", "House sauce"],
+      "addons": [
+        { "id": "extra-patty", "name": "Extra patty", "price": 2.0 },
+        { "id": "bacon", "name": "Crispy bacon", "price": 1.2 },
+        { "id": "extra-cheese", "name": "Extra cheese", "price": 0.8 },
+        { "id": "fried-egg", "name": "Fried egg", "price": 1.0 },
+        { "id": "combo", "name": "Make it a combo (fries + soft drink)", "price": 3.5 }
+      ]
+    },
+    {
+      "id": "paneer-tikka",
+      "category": "burgers",
+      "name": "Paneer Tikka Burger",
+      "description": "Grilled tandoori-spiced paneer, mint chutney, pickled red onion and crunchy lettuce.",
+      "price": 7.2,
+      "emoji": "🧀",
+      "calories": 640,
+      "tags": ["veg", "spicy"],
+      "removals": ["Mint chutney", "Pickled onion", "Lettuce"],
+      "addons": [
+        { "id": "extra-paneer", "name": "Extra paneer slice", "price": 1.8 },
+        { "id": "extra-cheese", "name": "Extra cheese", "price": 0.8 },
+        { "id": "jalapenos", "name": "Jalapeños", "price": 0.6 },
+        { "id": "combo", "name": "Make it a combo (fries + soft drink)", "price": 3.5 }
+      ]
+    },
+    {
+      "id": "aloo-tikki",
+      "category": "burgers",
+      "name": "Aloo Tikki Crunch",
+      "description": "Crispy spiced potato and pea patty, tamarind glaze, tomato and sweet onion.",
+      "price": 5.9,
+      "emoji": "🥔",
+      "calories": 560,
+      "tags": ["veg"],
+      "removals": ["Tamarind glaze", "Tomato", "Onions"],
+      "addons": [
+        { "id": "extra-patty", "name": "Extra tikki", "price": 1.5 },
+        { "id": "extra-cheese", "name": "Cheese slice", "price": 0.8 },
+        { "id": "combo", "name": "Make it a combo (fries + soft drink)", "price": 3.5 }
+      ]
+    },
+    {
+      "id": "tandoori-chicken",
+      "category": "burgers",
+      "name": "Tandoori Chicken Burger",
+      "description": "Yoghurt-marinated tandoori chicken thigh, cucumber raita, shredded cabbage and lime.",
+      "price": 7.5,
+      "emoji": "🍗",
+      "calories": 690,
+      "tags": ["spicy"],
+      "removals": ["Raita", "Cabbage", "Lime"],
+      "addons": [
+        { "id": "bacon", "name": "Crispy bacon", "price": 1.2 },
+        { "id": "extra-cheese", "name": "Extra cheese", "price": 0.8 },
+        { "id": "jalapenos", "name": "Jalapeños", "price": 0.6 },
+        { "id": "combo", "name": "Make it a combo (fries + soft drink)", "price": 3.5 }
+      ]
+    },
+    {
+      "id": "butter-chicken-melt",
+      "category": "burgers",
+      "name": "Butter Chicken Melt",
+      "description": "Crispy chicken fillet smothered in creamy makhani sauce with melted mozzarella and coriander.",
+      "price": 7.9,
+      "emoji": "🧈",
+      "calories": 780,
+      "tags": [],
+      "removals": ["Coriander", "Mozzarella"],
+      "addons": [
+        { "id": "extra-sauce", "name": "Extra makhani sauce", "price": 0.7 },
+        { "id": "bacon", "name": "Crispy bacon", "price": 1.2 },
+        { "id": "combo", "name": "Make it a combo (fries + soft drink)", "price": 3.5 }
+      ]
+    },
+    {
+      "id": "double-masala-smash",
+      "category": "burgers",
+      "name": "Double Masala Smash",
+      "description": "Two masala-seasoned beef patties, pepper jack, crispy onion bhaji and fiery chilli mayo.",
+      "price": 9.2,
+      "emoji": "🌶️",
+      "calories": 950,
+      "tags": ["spicy"],
+      "removals": ["Onion bhaji", "Chilli mayo", "Cheese"],
+      "addons": [
+        { "id": "extra-patty", "name": "Extra patty", "price": 2.0 },
+        { "id": "bacon", "name": "Crispy bacon", "price": 1.2 },
+        { "id": "jalapenos", "name": "Jalapeños", "price": 0.6 },
+        { "id": "combo", "name": "Make it a combo (fries + soft drink)", "price": 3.5 }
+      ]
+    },
+    {
+      "id": "masala-fries",
+      "category": "sides",
+      "name": "Masala Fries",
+      "description": "Skin-on fries tossed in our chaat masala blend with a squeeze of lime.",
+      "price": 3.5,
+      "emoji": "🍟",
+      "calories": 380,
+      "tags": ["veg"],
+      "sizes": "standard",
+      "removals": [],
+      "addons": [
+        { "id": "cheese-sauce", "name": "Cheese sauce", "price": 0.9 },
+        { "id": "chilli-mayo", "name": "Chilli mayo dip", "price": 0.5 }
+      ]
+    },
+    {
+      "id": "plain-fries",
+      "category": "sides",
+      "name": "Salted Fries",
+      "description": "Golden, crisp and simply salted.",
+      "price": 2.9,
+      "emoji": "🍟",
+      "calories": 340,
+      "tags": ["veg"],
+      "sizes": "standard",
+      "removals": [],
+      "addons": [
+        { "id": "cheese-sauce", "name": "Cheese sauce", "price": 0.9 },
+        { "id": "chilli-mayo", "name": "Chilli mayo dip", "price": 0.5 }
+      ]
+    },
+    {
+      "id": "samosa-trio",
+      "category": "sides",
+      "name": "Samosa Trio",
+      "description": "Three crispy pastry parcels filled with spiced potato and peas, with tamarind dip.",
+      "price": 3.9,
+      "emoji": "🥟",
+      "calories": 420,
+      "tags": ["veg"],
+      "removals": [],
+      "addons": [
+        { "id": "mint-dip", "name": "Mint chutney dip", "price": 0.5 }
+      ]
+    },
+    {
+      "id": "onion-bhaji",
+      "category": "sides",
+      "name": "Onion Bhaji Bites",
+      "description": "Gram-flour battered onion fritters, fried until golden.",
+      "price": 4.2,
+      "emoji": "🧅",
+      "calories": 400,
+      "tags": ["veg"],
+      "removals": [],
+      "addons": [
+        { "id": "mint-dip", "name": "Mint chutney dip", "price": 0.5 },
+        { "id": "chilli-mayo", "name": "Chilli mayo dip", "price": 0.5 }
+      ]
+    },
+    {
+      "id": "tandoori-wings",
+      "category": "sides",
+      "name": "Tandoori Wings (6)",
+      "description": "Six smoky, yoghurt-marinated chicken wings with cooling raita.",
+      "price": 6.5,
+      "emoji": "🍖",
+      "calories": 520,
+      "tags": ["spicy"],
+      "removals": [],
+      "addons": [
+        { "id": "extra-raita", "name": "Extra raita", "price": 0.5 }
+      ]
+    },
+    {
+      "id": "mango-lassi",
+      "category": "drinks",
+      "name": "Mango Lassi",
+      "description": "Thick, chilled yoghurt and Alphonso mango blended smooth.",
+      "price": 3.8,
+      "emoji": "🥭",
+      "calories": 260,
+      "tags": ["veg"],
+      "sizes": "standard",
+      "removals": [],
+      "addons": []
+    },
+    {
+      "id": "mango-shake",
+      "category": "drinks",
+      "name": "Mango Shake",
+      "description": "Creamy vanilla ice cream blended with sweet mango.",
+      "price": 4.9,
+      "emoji": "🥭",
+      "calories": 480,
+      "tags": ["veg"],
+      "sizes": "standard",
+      "removals": [],
+      "addons": [
+        { "id": "whipped", "name": "Whipped cream", "price": 0.5 }
+      ]
+    },
+    {
+      "id": "chocolate-shake",
+      "category": "drinks",
+      "name": "Chocolate Shake",
+      "description": "Rich chocolate ice cream shake, thick enough for a spoon.",
+      "price": 4.9,
+      "emoji": "🍫",
+      "calories": 520,
+      "tags": ["veg"],
+      "sizes": "standard",
+      "removals": [],
+      "addons": [
+        { "id": "whipped", "name": "Whipped cream", "price": 0.5 }
+      ]
+    },
+    {
+      "id": "nimbu-pani",
+      "category": "drinks",
+      "name": "Nimbu Pani",
+      "description": "Fresh lime, mint and a pinch of black salt over ice.",
+      "price": 2.8,
+      "emoji": "🍋",
+      "calories": 90,
+      "tags": ["veg"],
+      "sizes": "standard",
+      "removals": [],
+      "addons": []
+    },
+    {
+      "id": "cola",
+      "category": "drinks",
+      "name": "Cola",
+      "description": "Ice-cold fountain cola.",
+      "price": 2.5,
+      "emoji": "🥤",
+      "calories": 150,
+      "tags": ["veg"],
+      "sizes": "standard",
+      "removals": [],
+      "addons": []
+    },
+    {
+      "id": "water",
+      "category": "drinks",
+      "name": "Still Water",
+      "description": "500 ml bottled still water.",
+      "price": 1.5,
+      "emoji": "💧",
+      "calories": 0,
+      "tags": ["veg"],
+      "removals": [],
+      "addons": []
+    },
+    {
+      "id": "gulab-brownie",
+      "category": "desserts",
+      "name": "Gulab Jamun Brownie",
+      "description": "Fudgy chocolate brownie topped with warm gulab jamun and rose syrup.",
+      "price": 3.9,
+      "emoji": "🍫",
+      "calories": 450,
+      "tags": ["veg"],
+      "removals": [],
+      "addons": [
+        { "id": "ice-cream", "name": "Scoop of vanilla ice cream", "price": 1.2 }
+      ]
+    },
+    {
+      "id": "kulfi-cone",
+      "category": "desserts",
+      "name": "Pistachio Kulfi Cone",
+      "description": "Dense, creamy pistachio and cardamom kulfi in a crisp waffle cone.",
+      "price": 3.2,
+      "emoji": "🍦",
+      "calories": 300,
+      "tags": ["veg"],
+      "removals": [],
+      "addons": []
+    }
+  ]
+}

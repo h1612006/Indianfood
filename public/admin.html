@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Kitchen screen</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { background: #1f1613; color: #fff; }
+    .a-top { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: #2b1d18; border-bottom: 1px solid #44302a; position: sticky; top: 0; z-index: 10; }
+    .a-top h1 { font-size: 20px; }
+    .a-top a { color: var(--yellow); }
+    .a-wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
+    .login { max-width: 360px; margin: 12vh auto; background: #2b1d18; padding: 24px; border-radius: 18px; }
+    .login h2 { margin-bottom: 12px; }
+    .login input { width: 100%; padding: 12px; border-radius: 12px; border: 2px solid #5a443b; background: #1f1613; color: #fff; font: inherit; margin-bottom: 12px; }
+    .filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+    .filters .cat-tab { background: #2b1d18; color: #fff; border-color: #44302a; }
+    .filters .cat-tab.active { background: var(--yellow); color: var(--ink); border-color: var(--yellow); }
+    .status-line { margin-left: auto; font-size: 13px; color: #b9a79d; }
+    .orders { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+    .o-card { background: #2b1d18; border: 2px solid #44302a; border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+    .o-card.received { border-color: var(--orange); }
+    .o-card.preparing { border-color: var(--yellow); }
+    .o-card.ready { border-color: #51cf66; }
+    .o-card.completed, .o-card.cancelled { opacity: .6; }
+    .o-head { display: flex; justify-content: space-between; align-items: baseline; }
+    .o-id { font-weight: 900; font-size: 18px; letter-spacing: 1px; }
+    .o-time { font-size: 12px; color: #b9a79d; }
+    .o-pill { display: inline-block; font-size: 11px; font-weight: 800; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; background: #44302a; }
+    .o-pill.delivery { background: #1c4e80; }
+    .o-pill.pickup { background: #5c3b8a; }
+    .o-cust { font-size: 14px; color: #e6d8cf; }
+    .o-items { border-top: 1px dashed #5a443b; border-bottom: 1px dashed #5a443b; padding: 8px 0; font-size: 14px; }
+    .o-items .l { margin-bottom: 6px; }
+    .o-items .m { color: #b9a79d; font-size: 12px; display: block; }
+    .o-notes { background: #44302a; border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+    .o-foot { display: flex; justify-content: space-between; font-weight: 900; }
+    .o-actions { display: flex; gap: 8px; }
+    .o-actions .btn { flex: 1; padding: 10px; font-size: 14px; }
+    .btn.danger { background: transparent; color: #ff8787; border: 2px solid #ff8787; flex: 0 0 auto; }
+    .empty-a { text-align: center; color: #b9a79d; padding: 60px 10px; }
+    .a-error { background: #5b1a22; color: #ffd6da; padding: 10px 12px; border-radius: 10px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <header class="a-top">
+    <h1>🔥 Kitchen screen</h1>
+    <span><a href="/">Customer site</a> · <button class="link-btn" id="logout" style="color:var(--yellow)" hidden>Log out</button></span>
+  </header>
+
+  <div id="loginBox" class="login" hidden>
+    <h2>Staff login</h2>
+    <form id="loginForm">
+      <input type="password" id="pw" placeholder="Admin password" autocomplete="current-password" required>
+      <p class="a-error" id="loginErr" hidden></p>
+      <button class="btn primary block" type="submit">Open kitchen screen</button>
+    </form>
+  </div>
+
+  <main id="board" class="a-wrap" hidden>
+    <div class="filters" id="filters"></div>
+    <div id="boardErr" class="a-error" hidden></div>
+    <div class="orders" id="orders"></div>
+  </main>
+
+  <script src="admin.js"></script>
+</body>
+</html>
