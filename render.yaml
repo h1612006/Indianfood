@@ -1,0 +1,16 @@
+# One-click deploy on Render (https://render.com):
+#   New + -> Blueprint -> pick this repo -> enter ADMIN_PASSWORD -> Apply.
+services:
+  - type: web
+    name: spice-smash
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # You choose this when creating the Blueprint. It is the kitchen screen password.
+      - key: ADMIN_PASSWORD
+        sync: false

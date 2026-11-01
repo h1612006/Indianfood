@@ -585,3 +585,12 @@ async function init() {
 }
 
 init();
+
+// Lets phones offer "Install app" / "Add to Home Screen".
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      /* the site works fine without it */
+    });
+  });
+}

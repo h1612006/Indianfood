@@ -43,6 +43,25 @@ Then open:
 
 If you skip `ADMIN_PASSWORD`, the password is `admin123`. Change it before putting this on the internet. Set `PORT` to use a different port.
 
+## Put it online (use it from any device)
+
+The repo includes a [`render.yaml`](render.yaml) so it can be hosted for free on [Render](https://render.com):
+
+1. Create a Render account and choose **Sign in with GitHub**.
+2. Click **New +** → **Blueprint**, and pick this repository.
+3. When asked for `ADMIN_PASSWORD`, type a password for the kitchen screen. Choose something strong.
+4. Click **Apply**. After a few minutes you get a public address like `https://spice-smash.onrender.com`.
+
+Customers open that address. The kitchen screen is at `/admin.html` on the same address.
+
+**Install it as an app:** open the address on a phone. On Android (Chrome) choose menu → *Install app*. On iPhone (Safari) choose Share → *Add to Home Screen*. It then opens full-screen with its own icon.
+
+**Free hosting limits:**
+- The free plan goes to sleep after about 15 minutes without visitors, and the first visit afterwards takes up to a minute to wake it.
+- On the free plan, saved orders are lost whenever the app restarts or is redeployed. For a real restaurant, use a paid plan with a persistent disk (set the `DATA_DIR` environment variable to the disk's folder) or move orders to a database.
+
+Other hosts such as Railway or Fly.io also work: the start command is `npm start`, the app reads `PORT` from the environment, and the health check is `/healthz`.
+
 ## Change the menu, brand and prices
 
 Everything is in [`data/menu.json`](data/menu.json): brand name, tagline, currency symbol, delivery fee, free-delivery threshold, minimum delivery order, categories, sizes and every item with its extras and removals. Restart the server after editing.
@@ -60,6 +79,8 @@ public/app.js      Menu, customization, basket, checkout, order tracker
 public/admin.html  Kitchen screen
 public/admin.js    Kitchen logic
 public/styles.css  Styling
+public/sw.js, manifest.webmanifest, *.png   Make it installable as a phone app
+render.yaml        One-click hosting config for Render
 ```
 
 ## API

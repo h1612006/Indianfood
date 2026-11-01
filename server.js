@@ -9,7 +9,10 @@ const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 
 const MENU_FILE = path.join(__dirname, "data", "menu.json");
-const ORDERS_FILE = path.join(__dirname, "data", "orders.json");
+// Orders are saved in DATA_DIR (set it to a persistent disk when hosting online).
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
+fs.mkdirSync(DATA_DIR, { recursive: true });
+const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
 
 const menu = JSON.parse(fs.readFileSync(MENU_FILE, "utf8"));
 const itemsById = new Map(menu.items.map((i) => [i.id, i]));
@@ -103,6 +106,9 @@ app.disable("x-powered-by");
 app.use(express.json({ limit: "50kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
+// Used by hosting platforms to check the app is alive.
+app.get("/healthz", (_req, res) => res.type("text").send("ok"));
+
 app.get("/api/menu", (_req, res) => res.json(menu));
 
 app.post("/api/orders", (req, res) => {
@@ -159,7 +165,13 @@ app.post("/api/orders", (req, res) => {
       updatedAt: new Date().toISOString(),
     };
     orders.push(order);
-    saveOrders();
+    try {
+      saveOrders();
+    } catch (e) {
+      orders.pop(); // don't keep an order we couldn't store
+      console.error("Could not save orders:", e.message);
+      return res.status(500).json({ error: "We couldn't save your order. Please try again." });
+    }
     res.status(201).json({ order: publicOrder(order) });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -209,9 +221,16 @@ app.patch("/api/admin/orders/:id", requireAdmin, (req, res) => {
   if (!STATUSES.includes(status)) {
     return res.status(400).json({ error: "Invalid status." });
   }
+  const before = { status: order.status, updatedAt: order.updatedAt };
   order.status = status;
   order.updatedAt = new Date().toISOString();
-  saveOrders();
+  try {
+    saveOrders();
+  } catch (e) {
+    Object.assign(order, before);
+    console.error("Could not save orders:", e.message);
+    return res.status(500).json({ error: "Couldn't save the change. Please try again." });
+  }
   res.json({ order });
 });
 
