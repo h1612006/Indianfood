@@ -1,12 +1,12 @@
 {
-  "name": "spice-smash",
+  "name": "indian-snacks",
   "version": "1.0.0",
-  "description": "Spice Smash - a fast-food ordering app (menu, customization, cart, checkout, live order tracking, kitchen admin)",
+  "description": "Indian Snacks - online ordering (menu, basket, checkout, live order tracking, kitchen screen)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test test/api.test.js"
+    "test": "node --test test/api.test.js test/menu.test.js"
   },
   "engines": {
     "node": ">=18"

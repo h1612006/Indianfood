@@ -1,14 +1,13 @@
-# Spice Smash 🔥
+# Indian Snacks 🥟
 
-A complete fast-food ordering app in the style of the big burger chains: browse a menu, customize items, build a basket, check out for pickup or delivery, and watch your order progress live. A password-protected kitchen screen lets staff move orders along.
-
-Spice Smash is an original brand (burgers with an Indian twist). It does not use any real chain's name, logo or artwork.
+An online ordering app for an Indian snacks shop: customers browse the menu with photos, build a basket, check out for pickup or delivery and watch their order progress live. A password-protected kitchen screen shows who ordered what and lets you move each order along.
 
 ## Features
 
 **Customers**
-- Menu with categories, veg / spicy tags and calories
-- Item customization: sizes, paid extras (bacon, extra patty, "make it a combo"), free removals ("no pickles")
+- Menu with photos, categories and a unit under each price (per piece, per box, per kg, 20 pieces...)
+- Optional item customization (sizes, paid extras, free removals) when an item defines them in `data/menu.json`
+- Up to 100 of any item per order
 - Basket with quantity controls, saved between visits
 - Pickup or delivery, with a delivery fee, a free-delivery threshold and a minimum order
 - Checkout with name, phone, address (delivery) and kitchen notes
@@ -127,9 +126,28 @@ Free-plan limits (see Render's [free tier page](https://render.com/docs/free)): 
 
 ## Change the menu, brand and prices
 
-Everything is in [`data/menu.json`](data/menu.json): brand name, tagline, currency symbol, delivery fee, free-delivery threshold, minimum delivery order, categories, sizes and every item with its extras and removals. Restart the server after editing.
+Everything is in [`data/menu.json`](data/menu.json): brand name, tagline, currency symbol, delivery fee, free-delivery threshold, minimum delivery order, categories and every item. Photos live in [`public/img/`](public/img/). After editing, commit and push; the hosting redeploys by itself (locally, restart the server).
 
-To turn it into a different restaurant, change the names, emojis, prices and descriptions in that file. No code changes needed.
+One item looks like this:
+
+```json
+{
+  "id": "samosa",
+  "category": "fried",
+  "name": "Samosa",
+  "description": "Crisp pastry parcel with a spiced potato and pea filling.",
+  "price": 1.30,
+  "unit": "per piece",
+  "emoji": "🥟",
+  "image": "/img/samosa.jpg"
+}
+```
+
+- `unit` is optional text shown after the price ("per piece", "per box", "20 pieces", "250 g").
+- `image` is optional. Without it the `emoji` is shown instead. Put the photo in `public/img/` (a square JPG around 500 px keeps the page fast).
+- Optional extras: `"sizes": "standard"` (sizes are defined once under `sizes`), `"addons": [{"id","name","price"}]`, and `"removals": ["Onions"]`.
+- `"cardPaymentDemo": true` shows a fake "Card" option (nothing is charged). Leave it `false` until real payments are added.
+- Run `npm test` after editing: it checks every item for a missing name, bad price, unknown category or missing photo.
 
 ## Project structure
 
@@ -137,11 +155,12 @@ To turn it into a different restaurant, change the names, emojis, prices and des
 server.js          Express API, server-side pricing, admin routes
 db.js              Order storage: Postgres (Docker) or a JSON file fallback
 data/menu.json     Brand, menu and pricing (edit this)
+public/img/        Menu photos
 Dockerfile         Builds the app image
 docker-compose.yml App + Postgres database (with a saved volume)
 .env.example       Copy to .env and set your passwords
 .github/workflows/deploy.yml   Test, build image, deploy from GitHub
-test/api.test.js   Automated API tests (npm test)
+test/              Automated tests (npm test); fixtures/ holds a sample menu used by the API tests
 public/index.html  Customer site
 public/app.js      Menu, customization, basket, checkout, order tracker
 public/admin.html  Kitchen screen

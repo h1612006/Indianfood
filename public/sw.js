@@ -3,7 +3,7 @@
 // Minimal service worker: makes the site installable and lets the app shell
 // open quickly. Menu and orders always come live from the server (/api/*),
 // and the kitchen screen is never cached.
-const CACHE = "spice-smash-v1";
+const CACHE = "indian-snacks-v2";
 const SHELL = ["/", "/styles.css", "/app.js", "/icon-192.png", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {

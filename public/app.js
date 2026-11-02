@@ -13,6 +13,31 @@ const itemsById = new Map();
 
 const money = (n) => `${menu.currency}${n.toFixed(2)}`;
 const round2 = (n) => Math.round(n * 100) / 100;
+const MAX_QTY = 100; // keep in step with the server
+
+// Photo if the item has one, otherwise its emoji. A broken photo falls back to the emoji.
+function artHtml(item) {
+  return item.image
+    ? `<img src="${esc(item.image)}" alt="${esc(item.name)}" loading="lazy" data-fallback="${esc(item.emoji || "🍽️")}">`
+    : esc(item.emoji || "🍽️");
+}
+document.addEventListener(
+  "error",
+  (e) => {
+    const t = e.target;
+    if (t && t.tagName === "IMG" && t.dataset.fallback) {
+      const s = document.createElement("span");
+      s.textContent = t.dataset.fallback;
+      t.replaceWith(s);
+    }
+  },
+  true
+);
+
+// "€8.00 · 20 pieces"
+function priceHtml(item) {
+  return `<span class="price">${money(item.price)}${item.unit ? `<small class="unit"> · ${esc(item.unit)}</small>` : ""}</span>`;
+}
 
 function store(key, value) {
   try {
@@ -129,12 +154,12 @@ function renderMenu() {
             .map(
               (i) => `
             <button class="card" data-id="${esc(i.id)}" data-cat="${esc(i.category)}">
-              <div class="card-art" aria-hidden="true">${i.emoji}</div>
+              <div class="card-art${i.image ? " has-img" : ""}">${artHtml(i)}</div>
               <div class="card-body">
-                <div class="card-title"><h3>${esc(i.name)}</h3><span class="price">${money(i.price)}</span></div>
+                <div class="card-title"><h3>${esc(i.name)}</h3>${priceHtml(i)}</div>
                 <p class="desc">${esc(i.description)}</p>
                 <div class="card-foot">
-                  <span>${tagsHtml(i)}<span class="cal">${i.calories} kcal</span></span>
+                  <span>${tagsHtml(i)}${i.calories ? `<span class="cal">${i.calories} kcal</span>` : ""}</span>
                   <span class="add-chip" aria-hidden="true">+</span>
                 </div>
               </div>
@@ -183,10 +208,10 @@ function renderItem() {
   const unit = unitPrice(item, sel);
 
   $("#itemBody").innerHTML = `
-    <div class="item-art" aria-hidden="true">${item.emoji}</div>
-    <div class="item-head"><h2 id="itemTitle">${esc(item.name)}</h2><span class="price">${money(item.price)}</span></div>
+    <div class="item-art${item.image ? " has-img" : ""}">${artHtml(item)}</div>
+    <div class="item-head"><h2 id="itemTitle">${esc(item.name)}</h2>${priceHtml(item)}</div>
     <p class="desc">${esc(item.description)}</p>
-    <p>${tagsHtml(item)}<span class="cal">${item.calories} kcal</span></p>
+    <p>${tagsHtml(item)}${item.calories ? `<span class="cal">${item.calories} kcal</span>` : ""}</p>
 
     ${
       sizes
@@ -251,7 +276,7 @@ function renderItem() {
   );
   $$("[data-qty]", body).forEach((b) =>
     b.addEventListener("click", () => {
-      draft.qty = Math.min(20, Math.max(1, draft.qty + Number(b.dataset.qty)));
+      draft.qty = Math.min(MAX_QTY, Math.max(1, draft.qty + Number(b.dataset.qty)));
       renderItem();
     })
   );
@@ -272,7 +297,7 @@ function addDraftToCart() {
   };
   line.key = lineKey(line);
   const existing = cart.find((l) => l.key === line.key);
-  if (existing) existing.qty = Math.min(20, existing.qty + line.qty);
+  if (existing) existing.qty = Math.min(MAX_QTY, existing.qty + line.qty);
   else cart.push(line);
   saveCart();
   renderCartBits();
@@ -285,6 +310,7 @@ function addDraftToCart() {
 function lineMeta(l) {
   const item = itemsById.get(l.itemId);
   const parts = [];
+  if (item.unit) parts.push(item.unit);
   const sizes = sizeList(item);
   if (sizes) parts.push((sizes.find((s) => s.id === l.size) || sizes[0]).name);
   for (const id of l.addons) {
@@ -318,7 +344,7 @@ function renderCartDrawer() {
       const item = itemsById.get(l.itemId);
       const meta = lineMeta(l);
       return `<div class="line" data-key="${esc(l.key)}">
-        <div class="line-emoji" aria-hidden="true">${item.emoji}</div>
+        <div class="line-emoji">${artHtml(item)}</div>
         <div>
           <div class="line-name">${esc(item.name)}</div>
           ${meta.length ? `<div class="line-meta">${meta.map(esc).join(" · ")}</div>` : ""}
@@ -377,7 +403,7 @@ function wireCart() {
     const key = btn.closest(".line").dataset.key;
     const line = cart.find((l) => l.key === key);
     if (!line) return;
-    if (btn.dataset.act === "inc") line.qty = Math.min(20, line.qty + 1);
+    if (btn.dataset.act === "inc") line.qty = Math.min(MAX_QTY, line.qty + 1);
     if (btn.dataset.act === "dec") line.qty -= 1;
     if (btn.dataset.act === "del" || line.qty < 1) cart = cart.filter((l) => l.key !== key);
     saveCart();
@@ -393,6 +419,11 @@ function openCheckout() {
   $("#addressRow").hidden = !delivery;
   $("#payCounterLabel").textContent = delivery ? "Pay on delivery" : "Pay at the counter";
   $("#checkoutError").hidden = true;
+
+  // The card option is only a demo, so it is hidden unless the menu turns it on.
+  const cardOpt = $('#checkoutForm input[name="payment"][value="card"]');
+  cardOpt.closest("label").hidden = !menu.cardPaymentDemo;
+  if (!menu.cardPaymentDemo) $('#checkoutForm input[name="payment"][value="counter"]').checked = true;
 
   const saved = store("ss_customer") || {};
   const f = $("#checkoutForm").elements;
@@ -502,7 +533,7 @@ function renderTracker(order) {
     <div class="track-items">
       ${order.items
         .map((l) => {
-          const extra = [l.size, ...l.addons.map((a) => "+ " + a), ...l.removed.map((r) => "No " + r.toLowerCase())].filter(Boolean);
+          const extra = [l.unit, l.size, ...l.addons.map((a) => "+ " + a), ...l.removed.map((r) => "No " + r.toLowerCase())].filter(Boolean);
           return `<div class="row"><span>${l.qty}× ${esc(l.name)}${extra.length ? ` <span class="muted">(${extra.map(esc).join(", ")})</span>` : ""}</span><span>${money(l.lineTotal)}</span></div>`;
         })
         .join("")}

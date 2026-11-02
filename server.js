@@ -9,12 +9,17 @@ const { createStore } = require("./db");
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 
-const menu = JSON.parse(fs.readFileSync(path.join(__dirname, "data", "menu.json"), "utf8"));
+// MENU_FILE lets tests (or a second shop) use a different menu; normally it is data/menu.json.
+const menu = JSON.parse(
+  fs.readFileSync(process.env.MENU_FILE || path.join(__dirname, "data", "menu.json"), "utf8")
+);
 const itemsById = new Map(menu.items.map((i) => [i.id, i]));
 
 const STATUSES = ["received", "preparing", "ready", "completed", "cancelled"];
 const ORDER_TYPES = ["pickup", "delivery"];
-const PAYMENTS = ["counter", "card"];
+const MAX_QTY = 100; // per line, e.g. 60 samosas for a party
+// "card" is only a demo (nothing is charged), so it is off unless the menu turns it on.
+const PAYMENTS = menu.cardPaymentDemo ? ["counter", "card"] : ["counter"];
 
 const store = createStore();
 
@@ -37,8 +42,8 @@ function priceLine(raw) {
   if (!item) throw new UserError("Unknown menu item.");
 
   const qty = Number(raw.qty);
-  if (!Number.isInteger(qty) || qty < 1 || qty > 20) {
-    throw new UserError("Quantity must be between 1 and 20.");
+  if (!Number.isInteger(qty) || qty < 1 || qty > MAX_QTY) {
+    throw new UserError(`Quantity must be between 1 and ${MAX_QTY}.`);
   }
 
   let unit = item.price;
@@ -67,6 +72,7 @@ function priceLine(raw) {
     itemId: item.id,
     name: item.name,
     emoji: item.emoji,
+    unit: item.unit || null,
     qty,
     size: sizeName,
     addons,

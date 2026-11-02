@@ -1,7 +1,7 @@
 {
-  "name": "Spice Smash",
-  "short_name": "Spice Smash",
-  "description": "Smashed burgers. Big masala energy. Order for pickup or delivery.",
+  "name": "Indian Snacks",
+  "short_name": "Indian Snacks",
+  "description": "Indian snacks, ready to order. Pickup or delivery.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

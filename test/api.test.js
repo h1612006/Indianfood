@@ -52,7 +52,15 @@ before(async () => {
   base = `http://127.0.0.1:${port}`;
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "spice-test-"));
   child = spawn(process.execPath, [path.join(__dirname, "..", "server.js")], {
-    env: { ...process.env, PORT: String(port), ADMIN_PASSWORD: ADMIN, DATA_DIR: tmpDir },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      ADMIN_PASSWORD: ADMIN,
+      DATA_DIR: tmpDir,
+      // A fixed test menu with sizes, extras and removals, so these tests do not change
+      // when the real menu in data/menu.json is edited.
+      MENU_FILE: path.join(__dirname, "fixtures", "menu.fixture.json"),
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let log = "";
@@ -133,7 +141,7 @@ test("invalid orders are rejected with a helpful message (400)", async () => {
   const cases = [
     [{ items: [{ itemId: "nope", qty: 1 }] }, /Unknown menu item/],
     [{ items: [{ itemId: "water", qty: -3 }] }, /Quantity/],
-    [{ items: [{ itemId: "water", qty: 21 }] }, /Quantity/],
+    [{ items: [{ itemId: "water", qty: 101 }] }, /Quantity/],
     [{ items: [{ itemId: "water", qty: 1, addons: ["bacon"] }] }, /add-on/],
     [{ items: [] }, /basket is empty/],
     [{ type: "teleport" }, /pickup or delivery/],
