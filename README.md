@@ -114,9 +114,16 @@ Notes:
 
 Open the address on a phone. Android (Chrome): menu → *Install app*. iPhone (Safari): Share → *Add to Home Screen*. (Browsers only offer installation on `https://` addresses or `localhost`, so this works fully once HTTPS is set up.)
 
-### Quick demo hosting without a server
+### Fastest way to a public link (no server needed)
 
-[`render.yaml`](render.yaml) hosts the app on Render's free plan with a simple file store. It is good for showing the app to people, but orders are erased on every restart, so use the Docker route for anything real.
+[`render.yaml`](render.yaml) sets up the app **and** a Postgres database on [Render](https://render.com):
+
+1. Sign in at render.com with GitHub (as the account that owns this repo) and allow access to this repository.
+2. **New +** → **Blueprint** → choose this repository.
+3. Enter an `ADMIN_PASSWORD` (the kitchen screen password) and click **Apply**.
+4. After a few minutes you get a link like `https://spice-smash.onrender.com`. Customers order there; you watch orders arrive at `/admin.html` on the same link.
+
+Free-plan limits (see Render's [free tier page](https://render.com/docs/free)): the app sleeps after 15 minutes without visitors and takes about a minute to wake; the free database expires after 30 days and has no backups. Good for a demo or trial. For a real restaurant, use the Docker route above or a paid plan.
 
 ## Change the menu, brand and prices
 

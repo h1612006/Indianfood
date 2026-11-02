@@ -1,16 +1,31 @@
-# One-click deploy on Render (https://render.com):
+# Quickest way to get a public link (no server needed), on Render (https://render.com):
 #   New + -> Blueprint -> pick this repo -> enter ADMIN_PASSWORD -> Apply.
+#
+# This creates the web app AND a Postgres database, so orders are saved.
+# Free plan limits: the app sleeps after 15 minutes without visitors (first visit
+# then takes about a minute), and the free database expires after 30 days.
+# Fine for a demo or trial; for a real restaurant use the Docker route in the README.
+databases:
+  - name: spice-smash-db
+    plan: free
+    databaseName: spicesmash
+    user: spicesmash
+
 services:
   - type: web
     name: spice-smash
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /healthz
     envVars:
       - key: NODE_VERSION
         value: "20"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: spice-smash-db
+          property: connectionString
       # You choose this when creating the Blueprint. It is the kitchen screen password.
       - key: ADMIN_PASSWORD
         sync: false
