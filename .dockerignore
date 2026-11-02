@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log
+.git
+.github
+.env
+.env.*
+!.env.example
+data/orders.json
+data/orders.json.tmp
+test
+README.md
+render.yaml
+docker-compose.yml
+Dockerfile
+.dockerignore

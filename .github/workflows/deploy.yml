@@ -1,0 +1,165 @@
+# Test -> build Docker image -> publish to GitHub's registry -> deploy to your server.
+#
+# Runs on every push to main (and can be started by hand from the Actions tab).
+# Pull requests only run the tests.
+#
+# The deploy step needs a server with Docker. Until you add the secrets listed in
+# the README ("Publish from GitHub"), it is skipped and the workflow still succeeds.
+
+name: Test, build and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Run tests (with a real Postgres)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: spicesmash
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: spicesmash
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U spicesmash -d spicesmash"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgres://spicesmash:ci-only-password@localhost:5432/spicesmash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  build:
+    name: Build and publish Docker image
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Work out the image name (must be lowercase)
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/indianfood" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.name.outputs.image }}:latest
+            ${{ steps.name.outputs.image }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to your server
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      IMAGE: ${{ needs.build.outputs.image }}:${{ github.sha }}
+    steps:
+      - name: Check the deploy secrets exist
+        id: check
+        run: |
+          missing=""
+          for v in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY ADMIN_PASSWORD POSTGRES_PASSWORD; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Deploy skipped::The image was built and published, but these secrets are not set yet:$missing. See README: Publish from GitHub."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ready == 'true'
+
+      - name: Prepare SSH
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          port="${DEPLOY_PORT:-22}"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$port" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          cat > ~/.ssh/config <<CONF
+          Host target
+            HostName $DEPLOY_HOST
+            User $DEPLOY_USER
+            Port $port
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+          CONF
+
+      - name: Send compose file and settings to the server
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          ssh target 'mkdir -p ~/spice-smash'
+          scp docker-compose.yml target:spice-smash/docker-compose.yml
+          # Secrets are sent over stdin so they never appear in a command line or the log.
+          printf 'ADMIN_PASSWORD=%s\nPOSTGRES_PASSWORD=%s\nAPP_IMAGE=%s\n' \
+            "$ADMIN_PASSWORD" "$POSTGRES_PASSWORD" "$IMAGE" \
+            | ssh target 'umask 077 && cat > ~/spice-smash/.env'
+
+      - name: Pull the new image and restart
+        if: steps.check.outputs.ready == 'true'
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$REGISTRY_TOKEN" | ssh target "docker login ghcr.io -u '$REGISTRY_USER' --password-stdin"
+          ssh target 'cd ~/spice-smash && docker compose pull app && docker compose up -d --no-build && docker image prune -f'
+
+      - name: Wait until the app reports healthy
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          for i in $(seq 1 30); do
+            if ssh target 'curl -fsS http://localhost:$(grep -s ^APP_PORT= ~/spice-smash/.env | cut -d= -f2 | grep . || echo 3000)/healthz' >/dev/null 2>&1; then
+              echo "Healthy after about $((i * 4)) seconds."
+              exit 0
+            fi
+            sleep 4
+          done
+          echo "::error::The app did not become healthy. Logs follow."
+          ssh target 'cd ~/spice-smash && docker compose ps && docker compose logs --tail=60'
+          exit 1

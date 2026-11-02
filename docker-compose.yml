@@ -1,0 +1,47 @@
+# Spice Smash: the app plus its Postgres database, both in Docker.
+#
+#   First time:  copy .env.example to .env, edit the two passwords, then
+#                docker compose up --build
+#   Then open:   http://localhost:3000   (kitchen screen: /admin.html)
+#
+# Orders are stored in the "db-data" volume, so they survive restarts and updates.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: spicesmash
+      POSTGRES_DB: spicesmash
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your .env file}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spicesmash -d spicesmash"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    # Not published to the internet: only the app (same Docker network) can reach it.
+
+  app:
+    # On your own computer this is built from the Dockerfile.
+    # On the server, the GitHub workflow pulls the ready-made image with this name.
+    build: .
+    image: ${APP_IMAGE:-ghcr.io/h1612006/indianfood:latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: "3000"
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in your .env file}
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: spicesmash
+      PGDATABASE: spicesmash
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+
+volumes:
+  db-data:
