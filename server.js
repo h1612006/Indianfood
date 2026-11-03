@@ -263,6 +263,16 @@ app.post("/api/auth/login", wrap(async (req,res) => {
   sessions.set(token,safe); res.json({token,user:safe});
 }));
 
+app.post("/api/auth/admin-login", wrap(async (req,res) => {
+  const password=String(req.body.password||"");
+  const given=Buffer.from(password), real=Buffer.from(ADMIN_PASSWORD||"");
+  if(!real.length || given.length!==real.length || !crypto.timingSafeEqual(given,real)) return res.status(401).json({error:"Admin password is incorrect."});
+  const token=crypto.randomBytes(32).toString("hex");
+  const user={email:"admin",name:"Administrator",role:"admin",approved:true};
+  sessions.set(token,user);
+  res.json({token,user});
+}));
+
 app.patch("/api/auth/profile", wrap(async (req,res) => {
   if(!req.user) return res.status(401).json({error:"Please sign in."});
   const name=clean(req.body.name,80), phone=clean(req.body.phone,30), address=clean(req.body.address,200);
@@ -279,12 +289,20 @@ app.post("/api/auth/logout", (req,res) => { sessions.delete(String(req.get("auth
 /* ---------- admin ---------- */
 
 function requireAdmin(req, res, next) {
-  if (req.user && req.user.role === "chef" && req.user.approved) return next();
+  if (req.user && req.user.role === "admin" && req.user.approved) return next();
   const given = Buffer.from(String(req.get("x-admin-password") || ""));
   const real = Buffer.from(ADMIN_PASSWORD || "");
-  const ok = given.length === real.length && crypto.timingSafeEqual(given, real);
-  if (!ok) return res.status(401).json({ error: "Use an approved chef account or the admin password." });
+  const ok = real.length > 0 && given.length === real.length && crypto.timingSafeEqual(given, real);
+  if (!ok) return res.status(401).json({ error: "Admin access required." });
   next();
+}
+function requireKitchen(req,res,next) {
+  if (req.user && req.user.approved && ["chef","admin"].includes(req.user.role)) return next();
+  return res.status(401).json({error:"Sign in with an approved kitchen staff or admin account."});
+}
+function requireChef(req,res,next) {
+  if (req.user && req.user.role === "chef" && req.user.approved) return next();
+  return res.status(403).json({error:"Only approved kitchen staff can accept and update orders."});
 }
 function requireSuperAdmin(req,res,next) {
   const given=Buffer.from(String(req.get("x-admin-password")||""));
@@ -294,6 +312,31 @@ function requireSuperAdmin(req,res,next) {
   next();
 }
 
+
+app.get("/api/admin/users", requireAdmin, wrap(async (_req,res) => {
+  const users=(await store.listUsers()).map(({passwordHash,passwordSalt,...u})=>u);
+  res.json({users});
+}));
+app.post("/api/admin/users", requireAdmin, wrap(async (req,res) => {
+  const email=clean(req.body.email,160).toLowerCase(), name=clean(req.body.name,80);
+  const phone=clean(req.body.phone,30), address=clean(req.body.address,200);
+  const password=String(req.body.password||""), role=req.body.role;
+  if(!email.includes("@")||!name||password.length<10) throw new UserError("Enter a valid email, name and password of at least 10 characters.");
+  if(!["customer","chef","driver"].includes(role)) throw new UserError("Choose customer, kitchen staff or driver.");
+  const salt=crypto.randomBytes(16).toString("hex");
+  const user={email,name,phone,address,role,approved:true,status:"approved",passwordSalt:salt,passwordHash:crypto.scryptSync(password,salt,64).toString("hex"),createdAt:new Date().toISOString(),createdBy:"admin"};
+  try{await store.saveUser(user);}catch(e){if(e.code==="USER_EXISTS")throw new UserError("An account with this email already exists.");throw e;}
+  const {passwordHash,passwordSalt,...safe}=user; res.status(201).json({user:safe});
+}));
+app.delete("/api/admin/users/:email", requireAdmin, wrap(async (req,res) => {
+  const email=decodeURIComponent(req.params.email).toLowerCase();
+  if(email==="admin") throw new UserError("The primary admin account cannot be deleted here.");
+  const existing=await store.getUser(email);
+  if(!existing) return res.status(404).json({error:"Account not found."});
+  await store.deleteUser(email);
+  for(const [key,value] of sessions) if(value.email===email) sessions.delete(key);
+  res.json({ok:true});
+}));
 
 app.get("/api/admin/staff-applications", requireSuperAdmin, wrap(async (_req,res) => {
   const applications=(await store.listUsers()).filter(u=>["chef","driver"].includes(u.role)&&!u.approved).map(({passwordHash,passwordSalt,...u})=>u);
@@ -404,7 +447,7 @@ app.patch(
   })
 );
 
-app.patch("/api/admin/orders/:id/payment", requireAdmin, wrap(async (req, res) => {
+app.patch("/api/admin/orders/:id/payment", requireKitchen, wrap(async (req, res) => {
   if (typeof req.body.received !== "boolean") throw new UserError("Payment status must be true or false.");
   const current = await store.getOrder(req.params.id);
   if (!current) return res.status(404).json({ error: "Order not found." });
