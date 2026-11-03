@@ -22,6 +22,7 @@ const DRIVER = "test-driver-password-123";
 let child;
 let base;
 let tmpDir;
+let defaultCustomerToken;
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -72,6 +73,8 @@ before(async () => {
     if (code) console.error("Server exited early:\n" + log);
   });
   await waitForHealth(base);
+  const customerRegistration = await fetch(base + "/api/auth/register", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Default Test Customer",email:"default-customer@example.com",phone:"+34 600 000 000",password:"default-customer-password",role:"customer"})});
+  defaultCustomerToken = (await customerRegistration.json()).token;
   console.log("Testing against:", /Order storage: (.*)/.exec(log)?.[1] || "unknown storage");
 });
 
@@ -88,7 +91,7 @@ after(async () => {
 const json = (method, url, body, headers = {}) =>
   fetch(base + url, {
     method,
-    headers: { "Content-Type": "application/json", ...headers },
+    headers: { "Content-Type": "application/json", ...(defaultCustomerToken ? {"Authorization":"Bearer "+defaultCustomerToken} : {}), ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
