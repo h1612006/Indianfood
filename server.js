@@ -202,6 +202,7 @@ app.get("/api/menu", wrap(async (_req, res) => res.json({ ...menu, stock: await 
 app.post(
   "/api/orders",
   wrap(async (req, res) => {
+    if (!req.user || req.user.role !== "customer" || !req.user.approved) throw new UserError("Create a customer account and sign in before ordering.");
     const stock = await store.listStock();
     for (const line of (req.body && Array.isArray(req.body.items) ? req.body.items : [])) {
       if (stock[line && line.itemId] === false) throw new UserError("Out of stock.");
