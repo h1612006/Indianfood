@@ -306,7 +306,7 @@ test("only kitchen staff can accept and update orders", async () => {
   const {data}=await placeOrder();
   const id=data.order.id;
   assert.equal((await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},admin)).status,403);
-  assert.equal((await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},chefHeaders)).status,200);
+  assert.equal((await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},chefHeaders())).status,200);
 });
 
 test("unknown API routes return JSON 404", async () => {
@@ -392,7 +392,7 @@ test("driver pickup and customer delivery OTPs are verified separately", async (
   const placed={res:placedRes,data:await placedRes.json()};
   const id=placed.data.order.id;
   assert.equal(placed.res.status,201);
-  await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},chefHeaders);
+  await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},chefHeaders());
 
   const driverHeaders={"x-driver-password":DRIVER};
   const preparingJobs=await (await json("GET","/api/driver/orders",undefined,driverHeaders)).json();
@@ -405,7 +405,7 @@ test("driver pickup and customer delivery OTPs are verified separately", async (
 
   const accepted=await json("POST","/api/driver/orders/"+id+"/decision",{decision:"accept"},driverHeaders);
   assert.equal(accepted.status,200);
-  const sent=await json("PATCH","/api/admin/orders/"+id,{status:"out_for_delivery"},chefHeaders);
+  const sent=await json("PATCH","/api/admin/orders/"+id,{status:"out_for_delivery"},chefHeaders());
   assert.equal(sent.status,200);
   const adminOrders=(await (await json("GET","/api/admin/orders",undefined,admin)).json()).orders;
   const managed=adminOrders.find(o=>o.id===id);
