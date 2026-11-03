@@ -211,10 +211,11 @@ render.yaml        Optional quick-demo hosting config for Render
 
 Customer, kitchen-staff and driver accounts must verify their email address with a six-digit code before signing in. Codes expire after 10 minutes, are single-use, and allow up to five attempts. The server stores only a hash of the code.
 
-Email delivery uses the Resend API. In the Render service environment, set these variables (never commit them to GitHub):
+Email delivery supports Brevo or Resend. Brevo can use a verified Gmail sender address; Resend requires a verified sending domain. In the Render service environment, set these variables (never commit them to GitHub):
 
-- `RESEND_API_KEY`: an API key from your Resend account.
-- `EMAIL_FROM`: a sender address on a domain verified in Resend, for example `Spice Smash <verify@yourdomain.com>`.
+- `BREVO_API_KEY`: a Brevo transactional email API key (recommended if you want to use a verified Gmail sender address), or `RESEND_API_KEY` for Resend.
+- `EMAIL_FROM`: the sender email address verified with your provider. With Resend, use a sender on a verified domain. With Brevo, verify the sender address in your Brevo account.
+- `EMAIL_FROM_NAME`: optional sender display name; defaults to `Spice Smash`.
 - `OTP_PEPPER`: a long random secret used to hash verification codes.
 
 The code is delivered to the account's email address, including Gmail addresses. Verify your sending domain and configure its DNS records in Resend before enabling registration. Automated tests set `EMAIL_TEST_MODE=true`; the test-only code is never returned in production.
