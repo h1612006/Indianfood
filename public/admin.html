@@ -55,6 +55,10 @@
     .manager-tabs { display:flex; gap:8px; margin:4px 0 18px; flex-wrap:wrap; }
     .manager-tabs button { border:1px solid #5a443b; border-radius:999px; padding:10px 18px; background:#2b1d18; color:#fff; font:inherit; font-weight:800; cursor:pointer; }
     .manager-tabs button.active { background:var(--yellow); color:var(--ink); border-color:var(--yellow); }
+    .manager-tabs { position:sticky; top:58px; z-index:8; background:#1f1613; padding:10px 0; }
+    .manager-tabs button { flex:1; min-width:130px; }
+    .kitchen-section[hidden] { display:none !important; }
+    @media(max-width:600px) { .manager-tabs { top:54px; gap:6px; } .manager-tabs button { flex:1 1 calc(50% - 6px); padding:10px 8px; } }
     .menu-list { display:grid; gap:8px; margin-top:12px; }
     .menu-item-row { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:10px; align-items:center; background:#1f1613; border-radius:10px; padding:10px; }
     .menu-item-row small { display:block; color:#b9a79d; margin-top:3px; }
@@ -85,7 +89,13 @@
   </div>
 
   <main id="board" class="a-wrap" hidden>
-    <section id="ordersPanel">
+    <nav class="manager-tabs" id="kitchenNav" aria-label="Kitchen sections">
+      <button type="button" class="active" data-section="ordersPanel">Orders</button>
+      <button type="button" data-section="stockPanel">Stock</button>
+      <button type="button" data-section="menuPanel">Menu</button>
+      <button type="button" data-section="staffApprovals">Staff approvals</button>
+    </nav>
+    <section id="ordersPanel" class="kitchen-section">
       <div class="filters" id="filters"></div>
       <div id="boardErr" class="a-error" hidden></div>
       <div class="orders" id="orders"></div>
@@ -121,7 +131,7 @@
         <p id="menuFormError" class="a-error" hidden></p>
       </section>
     </section>
-    <section class="stock-panel" id="staffApprovals">
+    <section class="stock-panel kitchen-section" id="staffApprovals" hidden>
       <h2>Staff profile applications</h2>
       <p>Approve or reject chef and driver registrations. Staff cannot access their work pages until approved.</p>
       <div id="staffApplications" class="menu-list">Loading applications…</div>
