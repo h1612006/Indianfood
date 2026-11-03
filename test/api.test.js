@@ -246,6 +246,25 @@ test("20 simultaneous orders all succeed with unique ids", async () => {
   assert.equal(new Set(ids).size, 20);
 });
 
+
+test("customers can register and staff need admin approval", async () => {
+  const customerReg=await json("POST","/api/auth/register",{name:"Profile Customer",email:"customer-profile@example.com",phone:"+34 600 222 333",password:"customer-password-123",role:"customer"});
+  assert.equal(customerReg.status,201);
+  const customerData=await customerReg.json();
+  assert.ok(customerData.token);
+  assert.equal(customerData.user.role,"customer");
+  const staffReg=await json("POST","/api/auth/register",{name:"New Driver",email:"new-driver@example.com",phone:"+34 600 333 444",password:"driver-password-123",role:"driver"});
+  assert.equal(staffReg.status,201);
+  assert.equal((await json("POST","/api/auth/login",{email:"new-driver@example.com",password:"driver-password-123"})).status,403);
+  const pending=await json("GET","/api/admin/staff-applications",undefined,admin);
+  assert.ok((await pending.json()).applications.some(u=>u.email==="new-driver@example.com"));
+  const approved=await json("PATCH","/api/admin/staff-applications/new-driver%40example.com",{approved:true},admin);
+  assert.equal(approved.status,200);
+  const login=await json("POST","/api/auth/login",{email:"new-driver@example.com",password:"driver-password-123"});
+  assert.equal(login.status,200);
+  assert.equal((await login.json()).user.role,"driver");
+});
+
 test("unknown API routes return JSON 404", async () => {
   const res = await fetch(base + "/api/does-not-exist");
   assert.equal(res.status, 404);
@@ -337,6 +356,8 @@ test("driver pickup and customer delivery OTPs are verified separately", async (
   assert.equal("deliveryOtp" in preparingJob,false);
   assert.equal((await json("POST","/api/driver/orders/"+id+"/handover",{action:"pickup",otp:"123456"},driverHeaders)).status,400);
 
+  const accepted=await json("POST","/api/driver/orders/"+id+"/decision",{decision:"accept"},driverHeaders);
+  assert.equal(accepted.status,200);
   const sent=await json("PATCH","/api/admin/orders/"+id,{status:"out_for_delivery"},admin);
   assert.equal(sent.status,200);
   const adminOrders=(await (await json("GET","/api/admin/orders",undefined,admin)).json()).orders;
