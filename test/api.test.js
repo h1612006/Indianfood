@@ -311,9 +311,14 @@ test("admin can create and remove customer and staff accounts", async () => {
   assert.ok(createdData.testCode);
   assert.equal("passwordHash" in createdUser,false);
   assert.equal("passwordSalt" in createdUser,false);
+  assert.equal("emailOtpHash" in createdUser,false);
   await json("POST","/api/auth/verify-email",{email:"managed-kitchen@example.com",code:createdData.testCode});
   const listed=await json("GET","/api/admin/users",undefined,adminSession);
-  assert.ok((await listed.json()).users.some(u=>u.email==="managed-kitchen@example.com"));
+  const listedUsers=(await listed.json()).users;
+  const managed=listedUsers.find(u=>u.email==="managed-kitchen@example.com");
+  assert.ok(managed);
+  assert.equal("passwordHash" in managed,false);
+  assert.equal("emailOtpHash" in managed,false);
   const removed=await json("DELETE","/api/admin/users/managed-kitchen%40example.com",undefined,adminSession);
   assert.equal(removed.status,200);
   assert.equal((await json("POST","/api/auth/login",{email:"managed-kitchen@example.com",password:"managed-kitchen-password"})).status,401);
