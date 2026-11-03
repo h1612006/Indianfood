@@ -219,7 +219,7 @@ function render() {
         </div>
         <div class="o-cust">
           <strong>${esc(o.customer.name)}</strong> · ${esc(o.customer.phone)}
-          ${o.type === "delivery" ? `<br>📍 ${esc(o.customer.address)}` : ""}
+          ${o.type === "delivery" ? `<br>📍 ${esc(o.customer.address)}<br>🚚 Driver: ${esc(o.driverAcceptedBy || "Awaiting acceptance")}` : ""}
         </div>
         <div class="o-items">
           ${o.items
