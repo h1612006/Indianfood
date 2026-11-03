@@ -8,5 +8,5 @@ async function load(){
 }
 $("#create").addEventListener("submit",async e=>{e.preventDefault();const f=e.currentTarget,b=Object.fromEntries(new FormData(f)),m=$("#message");try{const result=await api("/api/admin/users",{method:"POST",body:JSON.stringify(b)});m.textContent="Account created. A one-time email verification code has been sent to "+b.email+". The initial password will not be shown again.";m.hidden=false;f.reset();await load();}catch(err){m.textContent=err.message;m.hidden=false;}});
 $("#users").addEventListener("click",async e=>{const b=e.target.closest("[data-delete]");if(!b)return;if(!confirm("Remove account "+b.dataset.delete+"? This will prevent further sign-in."))return;try{await api("/api/admin/users/"+encodeURIComponent(b.dataset.delete),{method:"DELETE"});await load();}catch(err){alert(err.message);}});
-$("#logout").addEventListener("click",()=>{localStorage.removeItem("ss_admin_token");location.href="/profile.html";});
+$("#logout").addEventListener("click",()=>{["ss_auth_token","ss_chef_token","ss_driver_token","ss_admin_token","ss_customer_profile"].forEach(k=>localStorage.removeItem(k));location.href="/profile.html";});
 if(!token())location.href="/profile.html";else load().catch(e=>{if(e.message)$("#users").textContent=e.message;});
