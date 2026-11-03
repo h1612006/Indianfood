@@ -55,12 +55,14 @@ function showBoard() {
   const adminOnly = !!localStorage.getItem("ss_admin_token") || !!password;
   const approvalsButton = $('#kitchenNav [data-section="staffApprovals"]');
   if (approvalsButton) approvalsButton.hidden = chefOnly;
+  ['stockPanel','menuPanel'].forEach(id=>{const button=$('#kitchenNav [data-section="'+id+'"]');if(button)button.hidden=chefOnly;});
+  const adminLink=$("#adminUsersLink");if(adminLink)adminLink.hidden=chefOnly;
   if (chefOnly && activeSection === "staffApprovals") activeSection = "ordersPanel";
   showSection(activeSection);
 }
 
 function showSection(sectionId) {
-  const allowed = ["ordersPanel", "stockPanel", "menuPanel", "staffApprovals"];
+  const allowed = localStorage.getItem("ss_chef_token") ? ["ordersPanel"] : ["ordersPanel", "stockPanel", "menuPanel", "staffApprovals"];
   if (!allowed.includes(sectionId)) sectionId = "ordersPanel";
   if (sectionId === "staffApprovals" && localStorage.getItem("ss_chef_token")) sectionId = "ordersPanel";
   activeSection = sectionId;
