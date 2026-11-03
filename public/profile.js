@@ -10,7 +10,7 @@ document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click",(
 $("#accountForm").addEventListener("submit",async e=>{
  e.preventDefault();const f=e.currentTarget.elements;const body={email:f.email.value.trim(),password:f.password.value};
  if(mode==="login"&&body.email.toLowerCase()==="admin"){
-  try{const r=await fetch("/api/auth/admin-login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:body.password})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Admin login failed.");["ss_auth_token","ss_chef_token","ss_driver_token","ss_admin_token"].forEach(k=>localStorage.removeItem(k));localStorage.setItem("ss_admin_token",d.token);location.href="/admin.html";}
+  try{const r=await fetch("/api/auth/admin-login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:body.password})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Admin login failed.");["ss_auth_token","ss_chef_token","ss_driver_token","ss_admin_token"].forEach(k=>localStorage.removeItem(k));localStorage.setItem("ss_admin_token",d.token);location.href="/admin-users.html";}
   catch(err){showMessage(err.message);}return;
  }
  if(mode==="register"){body.name=f.name.value.trim();body.phone=f.phone.value.trim();body.address=f.address.value.trim();body.role=f.role.value;}
