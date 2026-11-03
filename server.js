@@ -350,11 +350,18 @@ function requireDriver(req, res, next) {
 }
 
 app.get("/api/driver/orders", requireDriver, wrap(async (_req, res) => {
+  // Show active delivery jobs to drivers as soon as they are placed, not only
+  // after the kitchen dispatches them. OTP actions remain available only after
+  // the manager moves an order to out_for_delivery.
   const orders = (await store.listOrders())
-    .filter(o => o.type === "delivery" && ["out_for_delivery", "picked_up"].includes(o.status))
+    .filter(o => o.type === "delivery" && ["received", "preparing", "ready", "out_for_delivery", "picked_up"].includes(o.status))
     .map(o => ({
-      id:o.id, status:o.status, customer:{name:o.customer.name,address:o.customer.address,phone:o.customer.phone},
-      items:o.items, total:o.total, createdAt:o.createdAt
+      id: o.id,
+      status: o.status,
+      customer: { name: o.customer.name, address: o.customer.address, phone: o.customer.phone },
+      items: o.items,
+      total: o.total,
+      createdAt: o.createdAt
     }));
   res.json({orders});
 }));
