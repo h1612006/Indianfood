@@ -41,6 +41,8 @@ function showLogin(msg) {
   clearTimeout(timer);
   $("#board").hidden = true;
   $("#logout").hidden = true;
+  $("#kitchenNav").hidden = true;
+  $("#screenTitle").textContent = "Spice Smash staff access";
   $("#loginBox").hidden = false;
   const e = $("#loginErr");
   e.hidden = !msg;
@@ -53,28 +55,25 @@ function showBoard() {
   $("#logout").hidden = false;
   const chefOnly = !!localStorage.getItem("ss_chef_token");
   const adminOnly = !!localStorage.getItem("ss_admin_token") || !!password;
-  const approvalsButton = $('#kitchenNav [data-section="staffApprovals"]');
-  if (approvalsButton) approvalsButton.hidden = chefOnly;
-  ['stockPanel','menuPanel'].forEach(id=>{const button=$('#kitchenNav [data-section="'+id+'"]');if(button)button.hidden=chefOnly;});
-  const adminLink=$("#adminUsersLink");if(adminLink)adminLink.hidden=chefOnly;
-  if (chefOnly && activeSection === "staffApprovals") activeSection = "ordersPanel";
+  $("#kitchenNav").hidden = !adminOnly;
+  $("#screenTitle").textContent = adminOnly ? "⚙️ Spice Smash Admin" : "🔥 Kitchen staff";
+  $("#ordersPanel").hidden = adminOnly;
+  if (chefOnly) activeSection = "ordersPanel";
+  else if (adminOnly && (!activeSection || activeSection === "ordersPanel")) activeSection = (location.hash || "").slice(1) || "stockPanel";
   showSection(activeSection);
 }
-
 function showSection(sectionId) {
-  const allowed = localStorage.getItem("ss_chef_token") ? ["ordersPanel"] : ["ordersPanel", "stockPanel", "menuPanel", "staffApprovals"];
-  if (!allowed.includes(sectionId)) sectionId = "ordersPanel";
-  if (sectionId === "staffApprovals" && localStorage.getItem("ss_chef_token")) sectionId = "ordersPanel";
+  const adminOnly = !!localStorage.getItem("ss_admin_token") || !!password;
+  const allowed = adminOnly ? ["stockPanel", "menuPanel", "staffApprovals"] : ["ordersPanel"];
+  if (!allowed.includes(sectionId)) sectionId = adminOnly ? "stockPanel" : "ordersPanel";
   activeSection = sectionId;
-  document.querySelectorAll(".kitchen-section").forEach(section => {
-    section.hidden = section.id !== activeSection;
-  });
+  document.querySelectorAll(".kitchen-section").forEach(section => { section.hidden = section.id !== activeSection; });
   document.querySelectorAll("#kitchenNav [data-section]").forEach(button => {
     button.classList.toggle("active", button.dataset.section === activeSection);
     button.setAttribute("aria-current", button.dataset.section === activeSection ? "page" : "false");
   });
+  if (adminOnly) history.replaceState(null, "", "#" + sectionId);
 }
-
 async function load() {
   clearTimeout(timer);
   try {
@@ -83,7 +82,7 @@ async function load() {
     showBoard();
     $("#boardErr").hidden = true;
     try { await loadStock(); } catch (stockError) { $("#stockItems").textContent = "Could not load stock: " + stockError.message; }
-    if (!localStorage.getItem("ss_chef_token")) { try { await loadStaffApplications(); } catch (staffError) { $("#staffApplications").textContent = "Could not load applications: " + staffError.message; } }
+    if (!localStorage.getItem("ss_chef_token")) { try { await loadStaffApplications(); await loadStaffDirectory(); } catch (staffError) { $("#staffApplicationsList").textContent = "Could not load staff: " + staffError.message; } }
 
     const newOnes = orders.filter((o) => !knownIds.has(o.id));
     if (!firstLoad && newOnes.length) beep();
@@ -164,7 +163,12 @@ async function setStock(id, available, button) {
 async function loadStaffApplications() {
   const data=await api("/api/admin/staff-applications");
   staffApplications=data.applications||[];
-  $("#staffApplications").innerHTML=staffApplications.map(u=>`<div class="menu-item-row"><div><strong>${esc(u.name)}</strong><small>${esc(u.email)} · ${esc(u.role)} · Applied ${esc(new Date(u.createdAt).toLocaleDateString())}</small></div><button class="btn primary" data-staff-approve="true" data-email="${esc(u.email)}">Approve</button><button class="btn danger" data-staff-approve="false" data-email="${esc(u.email)}">Reject</button></div>`).join("")||'<p class="empty-a">No pending staff applications.</p>';
+  $("#staffApplicationsList").innerHTML=staffApplications.map(u=>"<div class='menu-item-row'><div><strong>"+esc(u.name)+"</strong><small>"+esc(u.email)+" · "+esc(u.role)+" · "+(u.emailVerified?"Email verified":"Email not verified")+" · Applied "+esc(new Date(u.createdAt).toLocaleDateString())+"</small></div><button class='btn primary' data-staff-approve='true' data-email='"+esc(u.email)+"'>Approve</button><button class='btn danger' data-staff-approve='false' data-email='"+esc(u.email)+"'>Reject</button></div>").join("")||"<p class='empty-a'>No pending staff applications.</p>";
+}
+async function loadStaffDirectory() {
+  const data=await api("/api/admin/users");
+  const staff=(data.users||[]).filter(u=>["chef","driver"].includes(u.role));
+  $("#staffDirectoryList").innerHTML=staff.map(u=>"<article class='staff-card'><strong>"+esc(u.name||"")+"</strong><small>Role: "+esc(u.role)+" · ID: "+esc(u.staffId||"Not assigned")+"</small><small>Email: "+esc(u.email)+"</small><small>Phone: "+esc(u.phone||"Not provided")+"</small><small>Address: "+esc(u.address||"Not provided")+"</small><small>Email: "+(u.emailVerified?"Verified":"Not verified")+" · Account: "+(u.approved?"Approved":"Pending / rejected")+"</small><small>Created: "+(u.createdAt?esc(new Date(u.createdAt).toLocaleString()):"—")+"</small></article>").join("")||"<p class='empty-a'>No staff accounts yet.</p>";
 }
 async function reviewStaff(email, approved) {
   try { await api("/api/admin/staff-applications/"+encodeURIComponent(email),{method:"PATCH",body:JSON.stringify({approved})}); await loadStaffApplications(); }
@@ -299,7 +303,7 @@ async function boot() {
       try{
         const r=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password})});
         const d=await r.json();
-        if(!r.ok) throw new Error(d.error||"Login failed.");
+        if(!r.ok) throw new Error((d.error||"Login failed.")+(d.verificationRequired?" Open the main account page (/profile.html) to enter your email code.":""));
         if(d.user.role!=="chef") throw new Error("This account is not an approved kitchen staff account.");
         localStorage.setItem("ss_chef_token",d.token); password="";
       }catch(ex){showLogin(ex.message);return;}
@@ -309,8 +313,7 @@ async function boot() {
 
   $("#logout").addEventListener("click", () => {
     sessionStorage.removeItem("ss_admin");
-    localStorage.removeItem("ss_chef_token");
-    localStorage.removeItem("ss_admin_token");
+    ["ss_auth_token","ss_chef_token","ss_driver_token","ss_admin_token","ss_customer_profile"].forEach(k=>localStorage.removeItem(k));
     password = "";
     $("#pw").value = "";
     showLogin();
@@ -330,6 +333,7 @@ async function boot() {
   });
 
   $("#staffApplications").addEventListener("click", e => { const b=e.target.closest("[data-staff-approve]"); if(b) reviewStaff(b.dataset.email,b.dataset.staffApprove==="true"); });
+  $("#staffApprovals").addEventListener("click", e => { const b=e.target.closest("[data-staff-view]"); if(!b)return; const directory=b.dataset.staffView==="directory"; $("#staffApplications").hidden=directory; $("#staffDirectory").hidden=!directory; document.querySelectorAll("[data-staff-view]").forEach(x=>x.classList.toggle("active",x===b)); if(directory)loadStaffDirectory().catch(err=>$("#staffDirectoryList").textContent=err.message); });
 
   $("#stockItems").addEventListener("click", (e) => {
     const b = e.target.closest("[data-stock]");

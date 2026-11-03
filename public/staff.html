@@ -4,13 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>Kitchen staff screen · Spice Smash</title>
+  <title>Kitchen staff · Spice Smash</title>
   <link rel="stylesheet" href="styles.css">
   <style>
     body { background: #1f1613; color: #fff; }
-    .a-top { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: #2b1d18; border-bottom: 1px solid #44302a; position: sticky; top: 0; z-index: 10; }
+    .a-top { display: flex; justify-content: space-between; align-items: center; gap:16px; padding: 14px 18px; background: #2b1d18; border-bottom: 1px solid #44302a; position: sticky; top: 0; z-index: 10; }
     .a-top h1 { font-size: 20px; }
     .a-top a { color: var(--yellow); }
+    .admin-nav { display:flex; justify-content:center; align-items:center; gap:10px; flex:1; }
+    .admin-nav a,.admin-nav button { border:1px solid #5a443b; border-radius:999px; padding:9px 15px; background:#2b1d18; color:#fff; text-decoration:none; font:inherit; font-weight:800; cursor:pointer; white-space:nowrap; }
+    .admin-nav a.active,.admin-nav button.active { background:var(--yellow); color:var(--ink); border-color:var(--yellow); }
+    .staff-subnav { display:flex; gap:8px; margin:10px 0 16px; flex-wrap:wrap; }
+    .staff-subnav button { border:1px solid #5a443b; border-radius:999px; padding:9px 14px; background:#1f1613; color:white; font-weight:700; cursor:pointer; }
+    .staff-subnav button.active { background:var(--yellow); color:var(--ink); }
+    .staff-detail { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:10px; }
+    .staff-card { background:#1f1613; border-radius:10px; padding:12px; }
+    .staff-card small { display:block; color:#b9a79d; margin-top:4px; overflow-wrap:anywhere; }
+    @media(max-width:760px){.a-top{flex-wrap:wrap}.admin-nav{order:3;flex-basis:100%;flex-wrap:wrap}.admin-nav a,.admin-nav button{flex:1;min-width:130px}.a-top h1{font-size:18px}}
     .a-wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
     .login { max-width: 360px; margin: 12vh auto; background: #2b1d18; padding: 24px; border-radius: 18px; }
     .login h2 { margin-bottom: 12px; }
@@ -78,8 +88,14 @@
 </head>
 <body>
   <header class="a-top">
-    <h1>🔥 Kitchen staff screen</h1>
-    <span><a id="adminUsersLink" href="/admin-users.html">Manage accounts</a> · <a href="/">Home</a> · <a href="/driver.html">Driver portal</a> · <button class="link-btn" id="logout" style="color:var(--yellow)" hidden>Log out</button></span>
+    <h1 id="screenTitle">🔥 Kitchen staff</h1>
+    <nav class="admin-nav" id="kitchenNav" aria-label="Administrator sections" hidden>
+      <a href="/admin-users.html">Account</a>
+      <button type="button" data-section="stockPanel">Stock list</button>
+      <button type="button" data-section="menuPanel">Menu</button>
+      <button type="button" data-section="staffApprovals">All staff</button>
+    </nav>
+    <button class="link-btn" id="logout" style="color:var(--yellow)" hidden>Log out</button>
   </header>
 
   <div id="loginBox" class="login" hidden>
@@ -88,17 +104,11 @@
       <input type="text" id="staffEmail" placeholder="Kitchen staff email or ID (optional)" autocomplete="username">
       <input type="password" id="pw" placeholder="Password" autocomplete="current-password" required>
       <p class="a-error" id="loginErr" hidden></p>
-      <button class="btn primary block" type="submit">Open staff orders</button>
+      <button class="btn primary block" type="submit">Open kitchen screen</button>
     </form>
   </div>
 
   <main id="board" class="a-wrap" hidden>
-    <nav class="manager-tabs" id="kitchenNav" aria-label="Kitchen sections">
-      <button type="button" class="active" data-section="ordersPanel">Orders</button>
-      <button type="button" data-section="stockPanel">Stock</button>
-      <button type="button" data-section="menuPanel">Menu</button>
-      <button type="button" data-section="staffApprovals">Staff approvals</button>
-    </nav>
     <section id="ordersPanel" class="kitchen-section">
       <div class="filters" id="filters"></div>
       <div id="boardErr" class="a-error" hidden></div>
@@ -136,9 +146,10 @@
       </section>
     </section>
     <section class="stock-panel kitchen-section" id="staffApprovals" hidden>
-      <h2>Staff profile applications</h2>
-      <p>Approve or reject chef and driver registrations. Staff cannot access their work pages until approved.</p>
-      <div id="staffApplications" class="menu-list">Loading applications…</div>
+      <h2>Staff management</h2>
+      <div class="staff-subnav"><button type="button" class="active" data-staff-view="approvals">Pending approvals</button><button type="button" data-staff-view="directory">All staff & IDs</button></div>
+      <div id="staffApplications"><p>Approve or reject chef and driver registrations. Staff cannot access their work pages until approved.</p><div id="staffApplicationsList" class="menu-list">Loading applications…</div></div>
+      <div id="staffDirectory" hidden><p>Staff directory with role, contact details, staff ID, email verification and approval status. Passwords are never displayed.</p><div id="staffDirectoryList" class="staff-detail">Loading staff…</div></div>
     </section>
   </main>
 

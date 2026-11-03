@@ -206,3 +206,16 @@ render.yaml        Optional quick-demo hosting config for Render
 - **One shared admin password.** For several staff members, add proper accounts.
 - **No rate limiting.** Add `express-rate-limit` before exposing it publicly.
 - **Customer accounts, order history, promo codes and email/SMS notifications** are natural next steps.
+
+## Email verification (production)
+
+Customer, kitchen-staff and driver accounts must verify their email address with a six-digit code before signing in. Codes expire after 10 minutes, are single-use, and allow up to five attempts. The server stores only a hash of the code.
+
+Email delivery supports Brevo or Resend. Brevo can use a verified Gmail sender address; Resend requires a verified sending domain. In the Render service environment, set these variables (never commit them to GitHub):
+
+- `BREVO_API_KEY`: a Brevo transactional email API key (recommended if you want to use a verified Gmail sender address), or `RESEND_API_KEY` for Resend.
+- `EMAIL_FROM`: the sender email address verified with your provider. With Resend, use a sender on a verified domain. With Brevo, verify the sender address in your Brevo account.
+- `EMAIL_FROM_NAME`: optional sender display name; defaults to `Spice Smash`.
+- `OTP_PEPPER`: a long random secret used to hash verification codes (recommended; if omitted, the configured admin password is used as the pepper).
+
+The code is delivered to the account's email address, including Gmail addresses. Before enabling registration, verify the sender address in Brevo or verify your sending domain and DNS records in Resend. Automated tests set `EMAIL_TEST_MODE=true`; the test-only code is never returned in production.

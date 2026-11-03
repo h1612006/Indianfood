@@ -61,6 +61,7 @@ before(async () => {
       ADMIN_PASSWORD: ADMIN,
       DRIVER_PASSWORD: DRIVER,
       DATA_DIR: tmpDir,
+      EMAIL_TEST_MODE: "true",
       // A fixed test menu with sizes, extras and removals, so these tests do not change
       // when the real menu in data/menu.json is edited.
       MENU_FILE: path.join(__dirname, "fixtures", "menu.fixture.json"),
@@ -75,7 +76,9 @@ before(async () => {
   });
   await waitForHealth(base);
   const customerRegistration = await fetch(base + "/api/auth/register", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Default Test Customer",email:"default-customer@example.com",phone:"+34 600 000 000",password:"default-customer-password",role:"customer"})});
-  defaultCustomerToken = (await customerRegistration.json()).token;
+  assert.equal(customerRegistration.status,201);
+  const defaultCustomerLogin=await fetch(base+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:"default-customer@example.com",password:"default-customer-password"})});
+  defaultCustomerToken=(await defaultCustomerLogin.json()).token;
   const chefRegistration=await fetch(base + "/api/auth/register", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Kitchen Test Chef",email:"kitchen-chef@example.com",phone:"+34 600 000 001",password:"kitchen-chef-password",role:"chef"})});
   assert.equal(chefRegistration.status,201);
   const chefApproval=await fetch(base + "/api/admin/staff-applications/kitchen-chef%40example.com", {method:"PATCH",headers:{"Content-Type":"application/json","x-admin-password":ADMIN},body:JSON.stringify({approved:true})});
@@ -262,11 +265,13 @@ test("20 simultaneous orders all succeed with unique ids", async () => {
 test("customers can register and staff need admin approval", async () => {
   const customerReg=await json("POST","/api/auth/register",{name:"Profile Customer",email:"customer-profile@example.com",phone:"+34 600 222 333",password:"customer-password-123",role:"customer"});
   assert.equal(customerReg.status,201);
-  const customerData=await customerReg.json();
-  assert.ok(customerData.token);
-  assert.equal(customerData.user.role,"customer");
+  assert.equal((await customerReg.json()).verificationRequired,undefined);
+  const customerLogin=await json("POST","/api/auth/login",{email:"customer-profile@example.com",password:"customer-password-123"});
+  assert.equal(customerLogin.status,200);
+  assert.equal((await customerLogin.json()).user.role,"customer");
   const staffReg=await json("POST","/api/auth/register",{name:"New Driver",email:"new-driver@example.com",phone:"+34 600 333 444",password:"driver-password-123",role:"driver"});
   assert.equal(staffReg.status,201);
+  assert.equal((await staffReg.json()).verificationRequired,undefined);
   assert.equal((await json("POST","/api/auth/login",{email:"new-driver@example.com",password:"driver-password-123"})).status,403);
   const pending=await json("GET","/api/admin/staff-applications",undefined,admin);
   const pendingData=await pending.json();
@@ -292,11 +297,21 @@ test("admin can create and remove customer and staff accounts", async () => {
   const adminSession={Authorization:"Bearer "+adminToken};
   const created=await json("POST","/api/admin/users",{name:"Managed Kitchen",email:"managed-kitchen@example.com",phone:"+34 600 555 111",password:"managed-kitchen-password",role:"chef"},adminSession);
   assert.equal(created.status,201);
-  const createdUser=(await created.json()).user;
+  const createdData=await created.json();
+  const createdUser=createdData.user;
   assert.match(createdUser.staffId,/^KCH-[A-F0-9]{6}$/);
   assert.equal(createdUser.approved,true);
+  assert.equal(createdUser.emailVerified,true);
+  assert.equal(createdData.testCode,undefined);
+  assert.equal("passwordHash" in createdUser,false);
+  assert.equal("passwordSalt" in createdUser,false);
+  assert.equal("emailOtpHash" in createdUser,false);
   const listed=await json("GET","/api/admin/users",undefined,adminSession);
-  assert.ok((await listed.json()).users.some(u=>u.email==="managed-kitchen@example.com"));
+  const listedUsers=(await listed.json()).users;
+  const managed=listedUsers.find(u=>u.email==="managed-kitchen@example.com");
+  assert.ok(managed);
+  assert.equal("passwordHash" in managed,false);
+  assert.equal("emailOtpHash" in managed,false);
   const removed=await json("DELETE","/api/admin/users/managed-kitchen%40example.com",undefined,adminSession);
   assert.equal(removed.status,200);
   assert.equal((await json("POST","/api/auth/login",{email:"managed-kitchen@example.com",password:"managed-kitchen-password"})).status,401);
@@ -386,7 +401,9 @@ test("admin can mark payment received or not received", async () => {
 
 test("driver pickup and customer delivery OTPs are verified separately", async () => {
   const registration=await json("POST","/api/auth/register",{name:"Delivery Customer",email:"delivery-customer@example.com",phone:customer.phone,password:"customer-password-123",role:"customer"});
-  const customerSession=await registration.json();
+  assert.equal(registration.status,201);
+  const customerLogin=await json("POST","/api/auth/login",{email:"delivery-customer@example.com",password:"customer-password-123"});
+  const customerSession=await customerLogin.json();
   const delivery={type:"delivery",customer:{...customer,address:"Calle Mayor 1"},items:[{itemId:"classic-smash",qty:3}]};
   const placedRes=await fetch(base+"/api/orders",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+customerSession.token},body:JSON.stringify(delivery)});
   const placed={res:placedRes,data:await placedRes.json()};

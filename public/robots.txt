@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://spice-smash.onrender.com/sitemap.xml
