@@ -112,7 +112,7 @@ test("health check and menu", async () => {
   assert.equal((await fetch(base + "/healthz")).status, 200);
   const menu = await (await fetch(base + "/api/menu")).json();
   assert.equal(menu.brand, "Spice Smash");
-  assert.equal(menu.items.length, 19);
+  assert.equal(menu.items.length, 20);
 });
 
 test("prices are calculated on the server (sizes, extras, quantities)", async () => {
