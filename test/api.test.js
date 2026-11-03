@@ -266,12 +266,44 @@ test("customers can register and staff need admin approval", async () => {
   assert.equal(staffReg.status,201);
   assert.equal((await json("POST","/api/auth/login",{email:"new-driver@example.com",password:"driver-password-123"})).status,403);
   const pending=await json("GET","/api/admin/staff-applications",undefined,admin);
-  assert.ok((await pending.json()).applications.some(u=>u.email==="new-driver@example.com"));
+  const pendingData=await pending.json();
+  const driverApplication=pendingData.applications.find(u=>u.email==="new-driver@example.com");
+  assert.ok(driverApplication);
+  assert.match(driverApplication.staffId,/^DRV-[A-F0-9]{6}$/);
   const approved=await json("PATCH","/api/admin/staff-applications/new-driver%40example.com",{approved:true},admin);
   assert.equal(approved.status,200);
   const login=await json("POST","/api/auth/login",{email:"new-driver@example.com",password:"driver-password-123"});
   assert.equal(login.status,200);
-  assert.equal((await login.json()).user.role,"driver");
+  const driverUser=(await login.json()).user;
+  assert.equal(driverUser.role,"driver");
+  const byStaffId=await json("POST","/api/auth/login",{email:driverUser.staffId,password:"driver-password-123"});
+  assert.equal(byStaffId.status,200);
+  assert.equal((await byStaffId.json()).user.email,"new-driver@example.com");
+});
+
+
+test("admin can create and remove customer and staff accounts", async () => {
+  const adminLogin=await json("POST","/api/auth/admin-login",{password:ADMIN});
+  assert.equal(adminLogin.status,200);
+  const adminToken=(await adminLogin.json()).token;
+  const adminSession={Authorization:"Bearer "+adminToken};
+  const created=await json("POST","/api/admin/users",{name:"Managed Kitchen",email:"managed-kitchen@example.com",phone:"+34 600 555 111",password:"managed-kitchen-password",role:"chef"},adminSession);
+  assert.equal(created.status,201);
+  const createdUser=(await created.json()).user;
+  assert.match(createdUser.staffId,/^KCH-[A-F0-9]{6}$/);
+  assert.equal(createdUser.approved,true);
+  const listed=await json("GET","/api/admin/users",undefined,adminSession);
+  assert.ok((await listed.json()).users.some(u=>u.email==="managed-kitchen@example.com"));
+  const removed=await json("DELETE","/api/admin/users/managed-kitchen%40example.com",undefined,adminSession);
+  assert.equal(removed.status,200);
+  assert.equal((await json("POST","/api/auth/login",{email:"managed-kitchen@example.com",password:"managed-kitchen-password"})).status,401);
+});
+
+test("only kitchen staff can accept and update orders", async () => {
+  const {data}=await placeOrder();
+  const id=data.order.id;
+  assert.equal((await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},admin)).status,403);
+  assert.equal((await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},chefHeaders)).status,200);
 });
 
 test("unknown API routes return JSON 404", async () => {
