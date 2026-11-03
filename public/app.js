@@ -296,6 +296,7 @@ function lineKey(l) {
 }
 
 function addDraftToCart() {
+  if (!isAvailable(draft.item)) { toast("Out of stock"); closeOverlay($("#itemOverlay")); return; }
   const line = {
     itemId: draft.item.id,
     spice: draft.spice,
@@ -597,6 +598,30 @@ function showTrackButton() {
   btn.onclick = () => id && openTracker(id);
 }
 
+
+async function refreshStock() {
+  try {
+    const res = await fetch("/api/menu", { cache: "no-store" });
+    if (!res.ok) return;
+    const latest = await res.json();
+    menu.stock = latest.stock || {};
+    $(".card").forEach((card) => {
+      const item = itemsById.get(card.dataset.id);
+      const available = isAvailable(item);
+      card.disabled = !available;
+      const marker = $(".add-chip, .stock-badge", card);
+      if (!available && marker && !marker.classList.contains("stock-badge")) {
+        marker.outerHTML = '<span class="stock-badge">OUT OF STOCK</span>';
+      } else if (available && marker && marker.classList.contains("stock-badge")) {
+        marker.outerHTML = '<span class="add-chip" aria-hidden="true">+</span>';
+      }
+    });
+    if (cart.some((line) => !isAvailable(itemsById.get(line.itemId)))) renderCartBits();
+  } catch (_) {
+    // Keep the last known stock state if the network is temporarily unavailable.
+  }
+}
+
 /* ---------- boot ---------- */
 
 async function init() {
@@ -619,6 +644,7 @@ async function init() {
   wireCheckout();
   renderCartBits();
   showTrackButton();
+  setInterval(refreshStock, 15000);
 
   const fromUrl = new URLSearchParams(location.search).get("order");
   if (fromUrl) openTracker(fromUrl.toUpperCase());
