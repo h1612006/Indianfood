@@ -27,6 +27,13 @@ function createFileStore(dir) {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, "orders.json");
   let orders = [];
+  let stock = {};
+  const stockFile = path.join(dir, "stock.json");
+  function persistStock() {
+    const tmp = stockFile + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(stock, null, 2));
+    fs.renameSync(tmp, stockFile);
+  }
 
   function persist() {
     const tmp = file + ".tmp";
@@ -44,6 +51,7 @@ function createFileStore(dir) {
       } catch (_) {
         orders = [];
       }
+      try { stock = JSON.parse(fs.readFileSync(stockFile, "utf8")); } catch (_) { stock = {}; }
     },
 
     async ping() {
@@ -65,6 +73,13 @@ function createFileStore(dir) {
 
     async getOrder(id) {
       return orders.find((o) => o.id === id) || null;
+    },
+
+    async listStock() { return { ...stock }; },
+    async setStock(id, available) {
+      const before = stock[id]; stock[id] = available;
+      try { persistStock(); } catch (e) { if (before === undefined) delete stock[id]; else stock[id] = before; throw e; }
+      return { ...stock };
     },
 
     async listOrders() {
@@ -131,6 +146,11 @@ function createPgStore() {
               updated_at  TIMESTAMPTZ NOT NULL,
               data        JSONB NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS item_stock (
+              item_id TEXT PRIMARY KEY,
+              available BOOLEAN NOT NULL,
+              updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
             CREATE INDEX IF NOT EXISTS orders_created_idx ON orders (created_at DESC);
           `);
           return;
@@ -165,6 +185,15 @@ function createPgStore() {
         [id]
       );
       return rows[0] ? toOrder(rows[0]) : null;
+    },
+
+    async listStock() {
+      const { rows } = await pool.query("SELECT item_id, available FROM item_stock");
+      return Object.fromEntries(rows.map((r) => [r.item_id, r.available]));
+    },
+    async setStock(id, available) {
+      await pool.query("INSERT INTO item_stock (item_id, available) VALUES ($1, $2) ON CONFLICT (item_id) DO UPDATE SET available = EXCLUDED.available, updated_at = NOW()", [id, available]);
+      return this.listStock();
     },
 
     async listOrders() {
