@@ -231,6 +231,7 @@ function render() {
     .map((o) => {
       const act = nextAction(o);
       const final = !ACTIVE.includes(o.status);
+      const kitchenCanUpdate = !!localStorage.getItem("ss_chef_token");
       return `<article class="o-card ${esc(o.status)}" data-id="${esc(o.id)}">
         <div class="o-head"><span class="o-id">${esc(o.id)}</span><span class="o-time">${esc(timeAgo(o.createdAt))}</span></div>
         <div>
@@ -255,8 +256,8 @@ function render() {
         <div class="o-notes">Payment: <strong>${o.paymentReceived ? "RECEIVED ✓" : "NOT RECEIVED"}</strong> · <button class="link-btn" data-payment="${o.paymentReceived ? "false" : "true"}">${o.paymentReceived ? "Mark not received" : "Mark received"}</button></div>
         ${o.status === "out_for_delivery" || o.status === "picked_up" ? `<div class="o-notes"><strong>Handover codes — manager only</strong><br>Pickup code: <strong>${esc(o.pickupOtp || "Already confirmed")}</strong><br>Customer delivery code: <strong>${esc(o.deliveryOtp || "Already confirmed")}</strong><br><small>Share the pickup code with the driver and the delivery code with the customer. Never show the customer code to the driver.</small></div>` : ""}
         <div class="o-actions">
-          ${act ? `<button class="btn primary" data-set="${act.to}">${esc(act.label)}</button>` : ""}
-          ${final ? `<button class="btn" data-set="received">Reopen</button>` : `<button class="btn danger" data-set="cancelled">Cancel</button>`}
+          ${act && kitchenCanUpdate ? `<button class="btn primary" data-set="${act.to}">${esc(act.label)}</button>` : ""}
+          ${kitchenCanUpdate ? (final ? `<button class="btn" data-set="received">Reopen</button>` : `<button class="btn danger" data-set="cancelled">Cancel</button>`) : ""}
         </div>
       </article>`;
     })
