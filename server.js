@@ -258,6 +258,60 @@ app.patch("/api/admin/stock/:id", requireAdmin, wrap(async (req, res) => {
   res.json({ stock: await store.setStock(id, req.body.available) });
 }));
 
+
+function menuItemInput(body, existing = null) {
+  body = body || {};
+  const name = clean(body.name, 80);
+  const description = clean(body.description, 300);
+  const category = clean(body.category, 40);
+  const price = Number(body.price);
+  const unit = clean(body.unit, 60);
+  const emoji = clean(body.emoji || "🍽️", 12);
+  const image = clean(body.image, 500);
+  if (!name) throw new UserError("Enter an item name.");
+  if (!menu.categories.some((c) => c.id === category)) throw new UserError("Choose a valid category.");
+  if (!Number.isFinite(price) || price <= 0 || Math.round(price * 100) / 100 !== price) {
+    throw new UserError("Enter a price greater than zero with no more than 2 decimal places.");
+  }
+  if (!description) throw new UserError("Enter an item description.");
+  if (image && !image.startsWith("/img/") && !/^https:\/\//i.test(image)) {
+    throw new UserError("Photo must be a /img/ path or an https URL.");
+  }
+  const id = existing ? existing.id : clean(body.id || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""), 80);
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(id)) throw new UserError("Item name must produce a valid menu ID.");
+  return {
+    ...(existing || {}),
+    id, name, description, category, price, unit: unit || undefined,
+    emoji, image: image || undefined,
+    spiceLevels: existing && existing.spiceLevels ? existing.spiceLevels : ["Mid", "High", "Super High"],
+  };
+}
+
+app.get("/api/admin/menu/items", requireAdmin, wrap(async (_req, res) => {
+  res.json({ items: menu.items, categories: menu.categories });
+}));
+
+app.post("/api/admin/menu/items", requireAdmin, wrap(async (req, res) => {
+  const item = menuItemInput(req.body);
+  if (itemsById.has(item.id)) throw new UserError("An item with this name already exists.");
+  await store.saveMenuItem(item);
+  menu.items.push(item);
+  itemsById.set(item.id, item);
+  res.status(201).json({ item });
+}));
+
+app.patch("/api/admin/menu/items/:id", requireAdmin, wrap(async (req, res) => {
+  const id = String(req.params.id);
+  const existing = itemsById.get(id);
+  if (!existing) return res.status(404).json({ error: "Menu item not found." });
+  const item = menuItemInput(req.body, existing);
+  await store.saveMenuItem(item);
+  const index = menu.items.findIndex((entry) => entry.id === id);
+  if (index >= 0) menu.items[index] = item;
+  itemsById.set(id, item);
+  res.json({ item });
+}));
+
 app.patch(
   "/api/admin/orders/:id",
   requireAdmin,
@@ -351,6 +405,13 @@ async function main() {
     throw new Error("Set ADMIN_PASSWORD to a strong password of at least 12 characters before starting the app.");
   }
   await store.init();
+  // Apply manager-created/edited items from persistent storage over the bundled starter menu.
+  for (const item of await store.listMenuItems()) {
+    const index = menu.items.findIndex((entry) => entry.id === item.id);
+    if (index >= 0) menu.items[index] = item;
+    else menu.items.push(item);
+    itemsById.set(item.id, item);
+  }
   console.log("Order storage:", store.kind);
 
   const server = app.listen(PORT, () => {

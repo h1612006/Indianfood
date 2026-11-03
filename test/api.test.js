@@ -270,6 +270,40 @@ test("admin can persist item stock and unavailable items cannot be ordered", asy
 });
 
 
+test("kitchen can add and edit menu items and customers can order the saved item", async () => {
+  assert.equal((await json("GET", "/api/admin/menu/items")).status, 401);
+  const created = await json("POST", "/api/admin/menu/items", {
+    name: "Masala Dosa",
+    category: "sides",
+    price: 8.5,
+    unit: "per portion",
+    description: "Crisp dosa with spiced potato filling.",
+    emoji: "🥞",
+  }, admin);
+  assert.equal(created.status, 201);
+  const item = (await created.json()).item;
+  assert.equal(item.id, "masala-dosa");
+
+  const menuAfterCreate = await (await fetch(base + "/api/menu")).json();
+  assert.equal(menuAfterCreate.items.find((entry) => entry.id === item.id).price, 8.5);
+
+  const edited = await json("PATCH", "/api/admin/menu/items/" + item.id, {
+    name: "Masala Dosa Special",
+    category: "sides",
+    price: 9.25,
+    unit: "per plate",
+    description: "Crisp dosa with potato masala and chutney.",
+    emoji: "🥞",
+  }, admin);
+  assert.equal(edited.status, 200);
+  assert.equal((await edited.json()).item.price, 9.25);
+
+  const ordered = await placeOrder({ items: [{ itemId: item.id, qty: 1, spice: "Mid" }] });
+  assert.equal(ordered.res.status, 201);
+  assert.equal(ordered.data.order.items[0].name, "Masala Dosa Special");
+  assert.equal(ordered.data.order.total, 9.25);
+});
+
 test("eat-here orders are accepted and recorded separately from takeaway", async () => {
   const {res,data}=await placeOrder({type:"eat_here"});
   assert.equal(res.status,201);
