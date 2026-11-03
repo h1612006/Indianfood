@@ -8,6 +8,7 @@ const { createStore } = require("./db");
 
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const DRIVER_PASSWORD = process.env.DRIVER_PASSWORD;
 
 // MENU_FILE lets tests (or a second shop) use a different menu; normally it is data/menu.json.
 const menu = JSON.parse(
@@ -15,13 +16,14 @@ const menu = JSON.parse(
 );
 const itemsById = new Map(menu.items.map((i) => [i.id, i]));
 
-const STATUSES = ["received", "preparing", "ready", "completed", "cancelled"];
-const ORDER_TYPES = ["pickup", "delivery"];
+const STATUSES = ["received", "preparing", "ready", "out_for_delivery", "picked_up", "completed", "cancelled"];
+const ORDER_TYPES = ["pickup", "delivery", "eat_here"];
 const MAX_QTY = 100; // per line, e.g. 60 samosas for a party
 // "card" is only a demo (nothing is charged), so it is off unless the menu turns it on.
 const PAYMENTS = menu.payments || (menu.cardPaymentDemo ? ["counter", "card"] : ["counter"]);
 
 const store = createStore();
+const otpFailures = new Map();
 
 /* A mistake in what the customer sent (shown to them, HTTP 400). */
 class UserError extends Error {}
@@ -143,6 +145,8 @@ function buildOrder(body) {
     deliveryFee,
     total: round2(subtotal + deliveryFee),
     status: "received",
+    serviceType: type === "eat_here" ? "eat_here" : (type === "pickup" ? "takeaway" : "delivery"),
+    paymentReceived: false,
     createdAt: now,
     updatedAt: now,
   };
@@ -159,6 +163,8 @@ function publicOrder(o) {
     deliveryFee: o.deliveryFee,
     total: o.total,
     status: o.status,
+    serviceType: o.serviceType || (o.type === "pickup" ? "takeaway" : o.type),
+    paymentReceived: !!o.paymentReceived,
     createdAt: o.createdAt,
     updatedAt: o.updatedAt,
   };
@@ -258,11 +264,73 @@ app.patch(
   wrap(async (req, res) => {
     const status = req.body && req.body.status;
     if (!STATUSES.includes(status)) throw new UserError("Invalid status.");
-    const order = await store.setStatus(req.params.id, status, new Date().toISOString());
+    const extra = {};
+    if (status === "out_for_delivery") {
+      const existing = await store.getOrder(req.params.id);
+      if (!existing || existing.type !== "delivery") throw new UserError("Only delivery orders can be sent out.");
+      extra.pickupOtp = String(crypto.randomInt(100000, 1000000));
+      extra.deliveryOtp = String(crypto.randomInt(100000, 1000000));
+      extra.pickupVerified = false;
+      extra.deliveryVerified = false;
+    }
+    const order = await store.setStatus(req.params.id, status, new Date().toISOString(), extra);
     if (!order) return res.status(404).json({ error: "Order not found." });
     res.json({ order });
   })
 );
+
+app.patch("/api/admin/orders/:id/payment", requireAdmin, wrap(async (req, res) => {
+  if (typeof req.body.received !== "boolean") throw new UserError("Payment status must be true or false.");
+  const current = await store.getOrder(req.params.id);
+  if (!current) return res.status(404).json({ error: "Order not found." });
+  const order = await store.setStatus(req.params.id, current.status, new Date().toISOString(), { paymentReceived: req.body.received });
+  res.json({ order });
+}));
+
+function requireDriver(req, res, next) {
+  const given = Buffer.from(String(req.get("x-driver-password") || ""));
+  const real = Buffer.from(DRIVER_PASSWORD || "");
+  const ok = real.length >= 12 && given.length === real.length && crypto.timingSafeEqual(given, real);
+  if (!ok) return res.status(401).json({ error: "Wrong driver password or driver access is not configured." });
+  next();
+}
+
+app.get("/api/driver/orders", requireDriver, wrap(async (_req, res) => {
+  const orders = (await store.listOrders())
+    .filter(o => o.type === "delivery" && ["out_for_delivery", "picked_up"].includes(o.status))
+    .map(o => ({
+      id:o.id, status:o.status, customer:{name:o.customer.name,address:o.customer.address,phone:o.customer.phone},
+      items:o.items, total:o.total, createdAt:o.createdAt
+    }));
+  res.json({orders});
+}));
+
+app.post("/api/driver/orders/:id/handover", requireDriver, wrap(async (req, res) => {
+  const action = req.body && req.body.action;
+  const code = String(req.body && req.body.otp || "").trim();
+  if (!/^\d{6}$/.test(code)) throw new UserError("Enter the 6-digit handover code.");
+  const order = await store.getOrder(String(req.params.id).toUpperCase());
+  if (!order || order.type !== "delivery") return res.status(404).json({error:"Delivery order not found."});
+  const failKey = req.ip + ":" + order.id;
+  const attempt = otpFailures.get(failKey) || {count:0,until:0};
+  if (attempt.until > Date.now()) throw new UserError("Too many incorrect codes. Try again in 5 minutes.");
+  if (action === "pickup") {
+    if (order.status !== "out_for_delivery") throw new UserError("This order is not waiting for pickup.");
+    if (!order.pickupOtp || code !== order.pickupOtp) { attempt.count++; if (attempt.count >= 8) attempt.until = Date.now() + 5 * 60 * 1000; otpFailures.set(failKey, attempt); throw new UserError("Pickup code is incorrect."); }
+    otpFailures.delete(failKey);
+    const updated = await store.setStatus(order.id, "picked_up", new Date().toISOString(), {pickupVerified:true, pickupOtp:null});
+    return res.json({order:{id:updated.id,status:updated.status}});
+  }
+  if (action === "delivered") {
+    if (order.status !== "picked_up") throw new UserError("Confirm pickup before delivery.");
+    if (!order.deliveryOtp || code !== order.deliveryOtp) { attempt.count++; if (attempt.count >= 8) attempt.until = Date.now() + 5 * 60 * 1000; otpFailures.set(failKey, attempt); throw new UserError("Customer delivery code is incorrect."); }
+    otpFailures.delete(failKey);
+    const updated = await store.setStatus(order.id, "completed", new Date().toISOString(), {deliveryVerified:true, deliveryOtp:null});
+    return res.json({order:{id:updated.id,status:updated.status}});
+  }
+  throw new UserError("Unknown handover action.");
+}));
+
 
 app.use("/api", (_req, res) => res.status(404).json({ error: "Not found." }));
 
@@ -288,6 +356,8 @@ async function main() {
   const server = app.listen(PORT, () => {
     console.log(`${menu.brand} running on http://localhost:${PORT}`);
     console.log(`Kitchen screen: http://localhost:${PORT}/admin.html`);
+    console.log(`Delivery screen: http://localhost:${PORT}/driver.html`);
+    if (!DRIVER_PASSWORD || DRIVER_PASSWORD.length < 12) console.log("Driver login disabled: set DRIVER_PASSWORD (at least 12 characters).");
     if (!store.persistent) {
       console.log("Orders are kept in a local file. Set DATABASE_URL (or use Docker) to use Postgres.");
     }

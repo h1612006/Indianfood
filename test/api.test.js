@@ -18,6 +18,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const ADMIN = "test-admin-pw";
+const DRIVER = "test-driver-password-123";
 let child;
 let base;
 let tmpDir;
@@ -56,6 +57,7 @@ before(async () => {
       ...process.env,
       PORT: String(port),
       ADMIN_PASSWORD: ADMIN,
+      DRIVER_PASSWORD: DRIVER,
       DATA_DIR: tmpDir,
       // A fixed test menu with sizes, extras and removals, so these tests do not change
       // when the real menu in data/menu.json is edited.
@@ -265,4 +267,52 @@ test("admin can persist item stock and unavailable items cannot be ordered", asy
   assert.equal(restored.status, 200);
   const restoredData = await restored.json();
   assert.equal(restoredData.stock[id], true);
+});
+
+
+test("eat-here orders are accepted and recorded separately from takeaway", async () => {
+  const {res,data}=await placeOrder({type:"eat_here"});
+  assert.equal(res.status,201);
+  assert.equal(data.order.type,"eat_here");
+  assert.equal(data.order.serviceType,"eat_here");
+});
+
+test("admin can mark payment received or not received", async () => {
+  const {data}=await placeOrder();
+  const id=data.order.id;
+  const changed=await json("PATCH","/api/admin/orders/"+id+"/payment",{received:true},admin);
+  assert.equal(changed.status,200);
+  assert.equal((await changed.json()).order.paymentReceived,true);
+  const reset=await json("PATCH","/api/admin/orders/"+id+"/payment",{received:false},admin);
+  assert.equal((await reset.json()).order.paymentReceived,false);
+});
+
+test("driver pickup and customer delivery OTPs are verified separately", async () => {
+  const delivery={type:"delivery",customer:{...customer,address:"Calle Mayor 1"},items:[{itemId:"classic-smash",qty:3}]};
+  const placed=await placeOrder(delivery);
+  const id=placed.data.order.id;
+  assert.equal(placed.res.status,201);
+  await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},admin);
+  const sent=await json("PATCH","/api/admin/orders/"+id,{status:"out_for_delivery"},admin);
+  assert.equal(sent.status,200);
+  const adminOrders=(await (await json("GET","/api/admin/orders",undefined,admin)).json()).orders;
+  const managed=adminOrders.find(o=>o.id===id);
+  assert.match(managed.pickupOtp,/^\d{6}$/);
+  assert.match(managed.deliveryOtp,/^\d{6}$/);
+
+  const driverHeaders={"x-driver-password":DRIVER};
+  const jobs=await (await json("GET","/api/driver/orders",undefined,driverHeaders)).json();
+  const job=jobs.orders.find(o=>o.id===id);
+  assert.ok(job);
+  assert.equal("deliveryOtp" in job,false);
+  assert.equal((await json("POST","/api/driver/orders/"+id+"/handover",{action:"pickup",otp:"000000"},driverHeaders)).status,400);
+
+  const picked=await json("POST","/api/driver/orders/"+id+"/handover",{action:"pickup",otp:managed.pickupOtp},driverHeaders);
+  assert.equal(picked.status,200);
+  assert.equal((await picked.json()).order.status,"picked_up");
+  assert.equal((await json("POST","/api/driver/orders/"+id+"/handover",{action:"delivered",otp:managed.pickupOtp},driverHeaders)).status,400);
+
+  const delivered=await json("POST","/api/driver/orders/"+id+"/handover",{action:"delivered",otp:managed.deliveryOtp},driverHeaders);
+  assert.equal(delivered.status,200);
+  assert.equal((await delivered.json()).order.status,"completed");
 });

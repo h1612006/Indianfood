@@ -14,7 +14,7 @@ let firstLoad = true;
 let menuItems = [];
 let stock = {};
 
-const ACTIVE = ["received", "preparing", "ready"];
+const ACTIVE = ["received", "preparing", "ready", "out_for_delivery", "picked_up"];
 
 const FILTERS = [
   { id: "active", label: "Active" },
@@ -126,8 +126,8 @@ function nextAction(o) {
   const delivery = o.type === "delivery";
   return {
     received: { to: "preparing", label: "Start preparing" },
-    preparing: { to: "ready", label: delivery ? "Out for delivery" : "Mark ready" },
-    ready: { to: "completed", label: delivery ? "Mark delivered" : "Mark picked up" },
+    preparing: { to: delivery ? "out_for_delivery" : "ready", label: delivery ? "Out for delivery · generate OTPs" : "Mark ready" },
+    ready: { to: "completed", label: o.type === "eat_here" ? "Mark served" : "Mark picked up" },
   }[o.status];
 }
 
@@ -161,8 +161,8 @@ function render() {
       return `<article class="o-card ${esc(o.status)}" data-id="${esc(o.id)}">
         <div class="o-head"><span class="o-id">${esc(o.id)}</span><span class="o-time">${esc(timeAgo(o.createdAt))}</span></div>
         <div>
-          <span class="o-pill ${esc(o.type)}">${o.type === "delivery" ? "🛵 Delivery" : "🏪 Pickup"}</span>
-          <span class="o-pill">${esc(o.status)}</span>
+          <span class="o-pill ${esc(o.type)}">${o.type === "delivery" ? "🛵 Delivery" : o.type === "eat_here" ? "🍽️ Eat here" : "🥡 Takeaway"}</span>
+          <span class="o-pill">${esc(o.status.replaceAll("_", " "))}</span>
           <span class="o-pill">${({cash:"Cash",card:"Card",bizum:"Bizum",counter:"Pay at counter"})[o.payment] || esc(o.payment)}</span>
         </div>
         <div class="o-cust">
@@ -179,6 +179,8 @@ function render() {
         </div>
         ${o.customer.notes ? `<div class="o-notes">📝 ${esc(o.customer.notes)}</div>` : ""}
         <div class="o-foot"><span>Total</span><span>${money(o.total)}</span></div>
+        <div class="o-notes">Payment: <strong>${o.paymentReceived ? "RECEIVED ✓" : "NOT RECEIVED"}</strong> · <button class="link-btn" data-payment="${o.paymentReceived ? "false" : "true"}">${o.paymentReceived ? "Mark not received" : "Mark received"}</button></div>
+        ${o.status === "out_for_delivery" || o.status === "picked_up" ? `<div class="o-notes"><strong>Handover codes — manager only</strong><br>Pickup code: <strong>${esc(o.pickupOtp || "Already confirmed")}</strong><br>Customer delivery code: <strong>${esc(o.deliveryOtp || "Already confirmed")}</strong><br><small>Share the pickup code with the driver and the delivery code with the customer. Never show the customer code to the driver.</small></div>` : ""}
         <div class="o-actions">
           ${act ? `<button class="btn primary" data-set="${act.to}">${esc(act.label)}</button>` : ""}
           ${final ? `<button class="btn" data-set="received">Reopen</button>` : `<button class="btn danger" data-set="cancelled">Cancel</button>`}
@@ -186,6 +188,11 @@ function render() {
       </article>`;
     })
     .join("");
+}
+
+async function setPayment(id, received) {
+  try { await api("/api/admin/orders/" + encodeURIComponent(id) + "/payment", {method:"PATCH", body:JSON.stringify({received})}); load(); }
+  catch (ex) { alert(ex.message); }
 }
 
 async function setStatus(id, status) {
@@ -238,6 +245,8 @@ async function boot() {
   });
 
   $("#orders").addEventListener("click", (e) => {
+    const pay = e.target.closest("[data-payment]");
+    if (pay) { setPayment(pay.closest(".o-card").dataset.id, pay.dataset.payment === "true"); return; }
     const b = e.target.closest("[data-set]");
     if (!b) return;
     setStatus(b.closest(".o-card").dataset.id, b.dataset.set);

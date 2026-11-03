@@ -63,7 +63,7 @@ function toast(msg) {
 /* ---------- state ---------- */
 
 let cart = store("ss_cart") || []; // [{key,itemId,qty,size,addons,removed}]
-let orderType = store("ss_type") === "delivery" ? "delivery" : "pickup";
+let orderType = ["delivery","eat_here"].includes(store("ss_type")) ? store("ss_type") : "pickup";
 let trackTimer = null;
 
 function saveCart() {
@@ -442,7 +442,7 @@ function openCheckout() {
   f.address.value = saved.address || "";
 
   $("#checkoutSummary").innerHTML = `
-    <div class="row"><span>${cartCount()} item${cartCount() === 1 ? "" : "s"} · ${delivery ? "Delivery" : "Pickup"}</span><span>${money(t.subtotal)}</span></div>
+    <div class="row"><span>${cartCount()} item${cartCount() === 1 ? "" : "s"} · ${delivery ? "Delivery" : orderType === "eat_here" ? "Eat here" : "Takeaway"}</span><span>${money(t.subtotal)}</span></div>
     ${delivery ? `<div class="row"><span>Delivery</span><span>${t.fee ? money(t.fee) : "Free"}</span></div>` : ""}
     <div class="row grand"><span>Total</span><span>${money(t.total)}</span></div>`;
 
@@ -503,19 +503,22 @@ function wireCheckout() {
 /* ---------- order tracking ---------- */
 
 const STEP_LABELS = {
-  pickup: ["Received", "Preparing", "Ready for pickup", "Picked up"],
+  pickup: ["Received", "Preparing", "Ready for takeaway", "Picked up"],
+  eat_here: ["Received", "Preparing", "Ready to eat", "Served"],
   delivery: ["Received", "Preparing", "On its way", "Delivered"],
 };
 const STEP_ICONS = ["📝", "👨‍🍳", "🛍️", "✅"];
-const STATUS_INDEX = { received: 0, preparing: 1, ready: 2, completed: 3 };
+const STATUS_INDEX = { received: 0, preparing: 1, ready: 2, out_for_delivery: 2, picked_up: 2, completed: 3 };
 
 function headline(order) {
   const d = order.type === "delivery";
   return {
     received: "We've got your order!",
     preparing: "Your food is on the grill 🔥",
-    ready: d ? "Your order is on its way 🛵" : "Ready for pickup! 🎉",
-    completed: d ? "Delivered — enjoy! 😋" : "Picked up — enjoy! 😋",
+    ready: d ? "Your order is on its way 🛵" : order.type === "eat_here" ? "Your table order is ready! 🎉" : "Ready for pickup! 🎉",
+    out_for_delivery: "Your order is on its way 🛵",
+    picked_up: "Your driver has your order 🛵",
+    completed: d ? "Delivered — enjoy! 😋" : order.type === "eat_here" ? "Served — enjoy! 😋" : "Picked up — enjoy! 😋",
     cancelled: "This order was cancelled",
   }[order.status];
 }
@@ -528,7 +531,7 @@ function renderTracker(order) {
   $("#trackBody").innerHTML = `
     <div class="track-id">ORDER ${esc(order.id)}</div>
     <h2 class="track-title" id="trackTitle">${esc(headline(order))}</h2>
-    <p class="muted">${order.type === "delivery" ? "Delivery" : "Pickup"} · ${({cash:"Cash",card:"Card",bizum:"Bizum",counter:order.type === "delivery" ? "Pay on delivery" : "Pay at the counter"})[order.payment] || esc(order.payment)}</p>
+    <p class="muted">${order.type === "delivery" ? "Delivery" : order.type === "eat_here" ? "Eat here" : "Takeaway"} · ${({cash:"Cash",card:"Card",bizum:"Bizum",counter:order.type === "delivery" ? "Pay on delivery" : "Pay at the counter"})[order.payment] || esc(order.payment)}</p>
     ${
       cancelled
         ? `<div class="cancelled-banner">Sorry — the restaurant cancelled this order. Please call us or place a new one.</div>`

@@ -94,6 +94,7 @@ jobs:
       DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+      DRIVER_PASSWORD: ${{ secrets.DRIVER_PASSWORD }}
       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
       IMAGE: ${{ needs.build.outputs.image }}:${{ github.sha }}
     steps:
@@ -101,7 +102,7 @@ jobs:
         id: check
         run: |
           missing=""
-          for v in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY ADMIN_PASSWORD POSTGRES_PASSWORD; do
+          for v in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY ADMIN_PASSWORD DRIVER_PASSWORD POSTGRES_PASSWORD; do
             [ -n "${!v}" ] || missing="$missing $v"
           done
           if [ -n "$missing" ]; then
@@ -140,6 +141,7 @@ jobs:
           printf 'ADMIN_PASSWORD=%s\nPOSTGRES_PASSWORD=%s\nAPP_IMAGE=%s\n' \
             "$ADMIN_PASSWORD" "$POSTGRES_PASSWORD" "$IMAGE" \
             | ssh target 'umask 077 && cat > ~/spice-smash/.env'
+          printf '%s\n' "DRIVER_PASSWORD=$DRIVER_PASSWORD" | ssh target 'umask 077 && cat >> ~/spice-smash/.env'
 
       - name: Pull the new image and restart
         if: steps.check.outputs.ready == 'true'

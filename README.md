@@ -21,6 +21,19 @@ An online ordering app for an Indian snacks shop: customers browse the menu with
 - One-tap status buttons, cancel and reopen
 - Per-item in-stock/out-of-stock controls, saved persistently in Postgres (or the local file store)
 - Active / Done / All filters
+- Payment received / not received control on every order
+- Manager-only pickup and customer delivery OTPs after an order is sent out
+
+**Delivery drivers** (`/driver.html`)
+- Separate driver password (`DRIVER_PASSWORD`, at least 12 characters)
+- Delivery jobs appear automatically while the page refreshes every five seconds
+- Driver confirms pickup with the manager-issued pickup OTP
+- Driver confirms delivery with the customer-issued delivery OTP
+- The driver API never returns the customer delivery OTP; the manager must share it directly with the customer
+- Incorrect handover codes are rate-limited
+
+**Order options**
+- Customers can choose takeaway, eat here, or delivery
 
 **Security basics**
 - Prices are always calculated on the server; anything the browser sends about price is ignored
@@ -39,7 +52,7 @@ You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Wind
    - Windows PowerShell: `Copy-Item .env.example .env`
    - Mac/Linux: `cp .env.example .env`
 
-   Open `.env` in a text editor and change `ADMIN_PASSWORD` (kitchen screen) and `POSTGRES_PASSWORD` (database). Letters and numbers are safest.
+   Open `.env` in a text editor and change `ADMIN_PASSWORD` (kitchen screen), `DRIVER_PASSWORD` (driver page) and `POSTGRES_PASSWORD` (database). Letters and numbers are safest.
 2. Start everything:
    ```
    docker compose up --build
@@ -101,6 +114,7 @@ Repository → **Settings** → **Secrets and variables** → **Actions** → **
 | `DEPLOY_SSH_KEY` | The full contents of the private file `deploy_key` |
 | `DEPLOY_PORT` | Optional. Only if SSH is not on port 22 |
 | `ADMIN_PASSWORD` | Kitchen screen password (choose a strong one) |
+| `DRIVER_PASSWORD` | Separate driver page password (choose a strong one) |
 | `POSTGRES_PASSWORD` | Database password (letters and numbers) |
 
 Then push to `main` (or open the **Actions** tab → *Test, build and deploy* → **Run workflow**). When it turns green, open `http://YOUR-SERVER:3000`.
@@ -121,7 +135,7 @@ Open the address on a phone. Android (Chrome): menu → *Install app*. iPhone (S
 
 1. Sign in at render.com with GitHub (as the account that owns this repo) and allow access to this repository.
 2. **New +** → **Blueprint** → choose this repository.
-3. Enter an `ADMIN_PASSWORD` (the kitchen screen password) and click **Apply**.
+3. Enter an `ADMIN_PASSWORD` (the kitchen screen password) and a separate `DRIVER_PASSWORD`, then click **Apply**.
 4. After a few minutes you get a link like `https://spice-smash.onrender.com`. Customers order there; you watch orders arrive at `/admin.html` on the same link.
 
 Free-plan limits (see Render's [free tier page](https://render.com/docs/free)): the app sleeps after 15 minutes without visitors and takes about a minute to wake; the free database expires after 30 days and has no backups. Good for a demo or trial. For a real restaurant, use the Docker route above or a paid plan.
@@ -180,7 +194,10 @@ render.yaml        Optional quick-demo hosting config for Render
 | POST | `/api/orders` | Place an order |
 | GET | `/api/orders/:id` | Track an order (status and items only) |
 | GET | `/api/admin/orders` | All orders (needs `x-admin-password` header) |
-| PATCH | `/api/admin/orders/:id` | Change status: `received`, `preparing`, `ready`, `completed`, `cancelled` |
+| PATCH | `/api/admin/orders/:id` | Change status; `out_for_delivery` generates two separate OTPs |
+| PATCH | `/api/admin/orders/:id/payment` | Mark payment received or not received |
+| GET | `/api/driver/orders` | Assigned/in-progress deliveries (driver password required) |
+| POST | `/api/driver/orders/:id/handover` | Verify pickup or customer delivery OTP |
 
 ## What is intentionally simple (and how to grow it)
 

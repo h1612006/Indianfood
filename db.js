@@ -86,12 +86,11 @@ function createFileStore(dir) {
       return [...orders].reverse();
     },
 
-    async setStatus(id, status, at) {
+    async setStatus(id, status, at, extra = {}) {
       const order = orders.find((o) => o.id === id);
       if (!order) return null;
-      const before = { status: order.status, updatedAt: order.updatedAt };
-      order.status = status;
-      order.updatedAt = at;
+      const before = { ...order };
+      Object.assign(order, extra, { status, updatedAt: at });
       try {
         persist();
       } catch (e) {
@@ -203,11 +202,14 @@ function createPgStore() {
       return rows.map(toOrder);
     },
 
-    async setStatus(id, status, at) {
+    async setStatus(id, status, at, extra = {}) {
+      const current = await this.getOrder(id);
+      if (!current) return null;
+      const updated = { ...current, ...extra, status, updatedAt: at };
       const { rows } = await pool.query(
-        `UPDATE orders SET status = $2, updated_at = $3 WHERE id = $1
+        `UPDATE orders SET status = $2, updated_at = $3, data = $4 WHERE id = $1
          RETURNING status, created_at, updated_at, data`,
-        [id, status, at]
+        [id, status, at, JSON.stringify(updated)]
       );
       return rows[0] ? toOrder(rows[0]) : null;
     },
