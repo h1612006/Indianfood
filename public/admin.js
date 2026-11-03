@@ -127,7 +127,7 @@ function nextAction(o) {
   return {
     received: { to: "preparing", label: "Start preparing" },
     preparing: { to: delivery ? "out_for_delivery" : "ready", label: delivery ? "Out for delivery · generate OTPs" : "Mark ready" },
-    ready: { to: "completed", label: "Mark picked up" },
+    ready: { to: "completed", label: o.type === "eat_here" ? "Mark served" : "Mark picked up" },
   }[o.status];
 }
 
@@ -162,7 +162,7 @@ function render() {
         <div class="o-head"><span class="o-id">${esc(o.id)}</span><span class="o-time">${esc(timeAgo(o.createdAt))}</span></div>
         <div>
           <span class="o-pill ${esc(o.type)}">${o.type === "delivery" ? "🛵 Delivery" : o.type === "eat_here" ? "🍽️ Eat here" : "🥡 Takeaway"}</span>
-          <span class="o-pill">${esc(o.status)}</span>
+          <span class="o-pill">${esc(o.status.replaceAll("_", " "))}</span>
           <span class="o-pill">${({cash:"Cash",card:"Card",bizum:"Bizum",counter:"Pay at counter"})[o.payment] || esc(o.payment)}</span>
         </div>
         <div class="o-cust">
