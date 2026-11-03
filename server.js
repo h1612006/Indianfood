@@ -331,10 +331,7 @@ app.post("/api/auth/verify-email", wrap(async (req,res) => {
   const email=clean(req.body.email,160).toLowerCase(), code=String(req.body.code||"").trim();
   const user=await store.getUser(email);
   if(!user) return res.status(400).json({error:"The email or verification code is invalid."});
-  if(user.emailVerified===true) {
-    if(!user.approved) return res.status(403).json({error:"Email verified. Your staff account is awaiting admin approval.",verified:true});
-    const token=crypto.randomBytes(32).toString("hex"), safe=safeUser(user); sessions.set(token,safe); return res.json({token,user:safe});
-  }
+  if(user.emailVerified===true) return res.status(400).json({error:"This email is already verified. Please sign in with your password."});
   if(!/^\d{6}$/.test(code) || !user.emailOtpHash || !user.emailOtpExpiresAt || Date.parse(user.emailOtpExpiresAt)<=Date.now()) return res.status(400).json({error:"That code is invalid or expired. Request a new one."});
   if(Number(user.emailOtpAttempts||0)>=5) return res.status(429).json({error:"Too many incorrect attempts. Request a new code."});
   const expected=Buffer.from(user.emailOtpHash), actual=Buffer.from(otpHash(email,code));
