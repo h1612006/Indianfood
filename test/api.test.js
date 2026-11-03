@@ -76,9 +76,9 @@ before(async () => {
   });
   await waitForHealth(base);
   const customerRegistration = await fetch(base + "/api/auth/register", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Default Test Customer",email:"default-customer@example.com",phone:"+34 600 000 000",password:"default-customer-password",role:"customer"})});
-  const defaultCustomerData=await customerRegistration.json();
-  const defaultCustomerVerified=await fetch(base+"/api/auth/verify-email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:"default-customer@example.com",code:defaultCustomerData.testCode})});
-  defaultCustomerToken=(await defaultCustomerVerified.json()).token;
+  assert.equal(customerRegistration.status,201);
+  const defaultCustomerLogin=await fetch(base+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:"default-customer@example.com",password:"default-customer-password"})});
+  defaultCustomerToken=(await defaultCustomerLogin.json()).token;
   const chefRegistration=await fetch(base + "/api/auth/register", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Kitchen Test Chef",email:"kitchen-chef@example.com",phone:"+34 600 000 001",password:"kitchen-chef-password",role:"chef"})});
   assert.equal(chefRegistration.status,201);
   const chefRegData=await chefRegistration.json();
