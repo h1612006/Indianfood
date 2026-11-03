@@ -41,6 +41,8 @@ function showLogin(msg) {
   clearTimeout(timer);
   $("#board").hidden = true;
   $("#logout").hidden = true;
+  $("#kitchenNav").hidden = true;
+  $("#screenTitle").textContent = "Spice Smash staff access";
   $("#loginBox").hidden = false;
   const e = $("#loginErr");
   e.hidden = !msg;
