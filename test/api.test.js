@@ -227,8 +227,8 @@ test("kitchen can move an order through every status, and the customer sees it",
     assert.equal(seen.status, status);
   }
 
-  assert.equal((await json("PATCH", "/api/admin/orders/" + id, { status: "bogus" }, chefHeaders)).status, 400);
-  assert.equal((await json("PATCH", "/api/admin/orders/SS-NOPE0", { status: "ready" }, chefHeaders)).status, 404);
+  assert.equal((await json("PATCH", "/api/admin/orders/" + id, { status: "bogus" }, chefHeaders())).status, 400);
+  assert.equal((await json("PATCH", "/api/admin/orders/SS-NOPE0", { status: "ready" }, chefHeaders())).status, 404);
 });
 
 test("kitchen list shows full details, newest first", async () => {
