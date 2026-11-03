@@ -254,6 +254,7 @@ test("admin can persist item stock and unavailable items cannot be ordered", asy
   const id = "classic-smash";
   const changed = await json("PATCH", "/api/admin/stock/" + id, { available: false }, admin);
   assert.equal(changed.status, 200);
+  const changedData = await changed.json();
   const menu = await (await fetch(base + "/api/menu")).json();
   assert.equal(menu.stock[id], false);
   const rejected = await placeOrder();
@@ -262,5 +263,6 @@ test("admin can persist item stock and unavailable items cannot be ordered", asy
 
   const restored = await json("PATCH", "/api/admin/stock/" + id, { available: true }, admin);
   assert.equal(restored.status, 200);
-  assert.equal(restored.data.stock[id], true);
+  const restoredData = await restored.json();
+  assert.equal(restoredData.stock[id], true);
 });
