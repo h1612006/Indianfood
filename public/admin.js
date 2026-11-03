@@ -10,7 +10,7 @@ let filter = "active";
 let currency = "€";
 let timer = null;
 let knownIds = new Set();
-let firstLoad = true;
+let firstLoad = true;\nlet menuItems = [];\nlet stock = {};
 
 const ACTIVE = ["received", "preparing", "ready"];
 
@@ -74,7 +74,7 @@ async function load() {
   timer = setTimeout(load, 5000);
 }
 
-function beep() {
+async function loadStock() {\n  const data = await api("/api/admin/stock");\n  stock = data.stock || {};\n  renderStock();\n}\n\nfunction renderStock() {\n  $("#stockItems").innerHTML = menuItems.map((item) => {\n    const available = stock[item.id] !== false;\n    return `<div class="stock-row"><strong>${esc(item.name)}</strong><button class="stock-toggle ${available ? "" : "off"}" data-stock="${esc(item.id)}" data-available="${available}">${available ? "In stock" : "Out of stock"}</button></div>`;\n  }).join("");\n}\n\nasync function setStock(id, available, button) {\n  button.disabled = true;\n  try { const data = await api("/api/admin/stock/" + encodeURIComponent(id), { method:"PATCH", body:JSON.stringify({available}) }); stock = data.stock || stock; renderStock(); }\n  catch (ex) { alert(ex.message); button.disabled = false; }\n}\n\nfunction beep() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const osc = ctx.createOscillator();
@@ -141,7 +141,7 @@ function render() {
         <div>
           <span class="o-pill ${esc(o.type)}">${o.type === "delivery" ? "🛵 Delivery" : "🏪 Pickup"}</span>
           <span class="o-pill">${esc(o.status)}</span>
-          <span class="o-pill">${o.payment === "card" ? "Card (demo)" : "Pay " + (o.type === "delivery" ? "on delivery" : "at counter")}</span>
+          <span class="o-pill">${({cash:"Cash",card:"Card",bizum:"Bizum",counter:"Pay at counter"})[o.payment] || esc(o.payment)}</span>
         </div>
         <div class="o-cust">
           <strong>${esc(o.customer.name)}</strong> · ${esc(o.customer.phone)}
@@ -151,7 +151,7 @@ function render() {
           ${o.items
             .map((l) => {
               const extra = [l.unit, l.size, ...l.addons.map((a) => "+ " + a), ...l.removed.map((r) => "NO " + r.toUpperCase())].filter(Boolean);
-              return `<div class="l"><strong>${l.qty}×</strong> ${esc(l.name)}${extra.length ? `<span class="m">${extra.map(esc).join(" · ")}</span>` : ""}</div>`;
+              return `<div class="l"><strong>${l.qty}×</strong> ${esc(l.name)}${extra.length ? `<span class="m">${[...extra, ...(l.spice ? ["Spice: " + l.spice] : [])].map(esc).join(" · ")}</span>` : ""}</div>`;
             })
             .join("")}
         </div>
@@ -208,7 +208,7 @@ async function boot() {
     }
   });
 
-  $("#orders").addEventListener("click", (e) => {
+  $("#stockItems").addEventListener("click", (e) => {\n    const b = e.target.closest("[data-stock]");\n    if (b) setStock(b.dataset.stock, b.dataset.available !== "true", b);\n  });\n\n  $("#orders").addEventListener("click", (e) => {
     const b = e.target.closest("[data-set]");
     if (!b) return;
     setStatus(b.closest(".o-card").dataset.id, b.dataset.set);
