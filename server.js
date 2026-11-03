@@ -248,8 +248,8 @@ app.post("/api/auth/register", wrap(async (req,res) => {
   const user = {email,name,phone,address,role,approved:role==="customer",status:role==="customer"?"approved":"pending",passwordSalt:salt,passwordHash:crypto.scryptSync(password,salt,64).toString("hex"),createdAt:new Date().toISOString()};
   try { await store.saveUser(user); } catch(e) { if(e.code==="USER_EXISTS") throw new UserError("An account with this email already exists."); throw e; }
   if(role!=="customer") return res.status(201).json({message:"Staff application sent for admin approval.",status:"pending"});
-  const token=crypto.randomBytes(32).toString("hex"); sessions.set(token,{email,name,phone,role,approved:true});
-  res.status(201).json({token,user:{email,name,phone,role,approved:true}});
+  const token=crypto.randomBytes(32).toString("hex"); sessions.set(token,{email,name,phone,address,role,approved:true});
+  res.status(201).json({token,user:{email,name,phone,address,role,approved:true}});
 }));
 app.post("/api/auth/login", wrap(async (req,res) => {
   const email=clean(req.body.email,160).toLowerCase(), password=String(req.body.password||"");
@@ -258,9 +258,20 @@ app.post("/api/auth/login", wrap(async (req,res) => {
   if(!user || hash!==user.passwordHash) return res.status(401).json({error:"Email or password is incorrect."});
   if(!user.approved) return res.status(403).json({error:"Your staff account is awaiting admin approval."});
   const token=crypto.randomBytes(32).toString("hex");
-  const safe={email:user.email,name:user.name,phone:user.phone,role:user.role,approved:user.approved};
+  const safe={email:user.email,name:user.name,phone:user.phone,address:user.address||"",role:user.role,approved:user.approved};
   sessions.set(token,safe); res.json({token,user:safe});
 }));
+
+app.patch("/api/auth/profile", wrap(async (req,res) => {
+  if(!req.user) return res.status(401).json({error:"Please sign in."});
+  const name=clean(req.body.name,80), phone=clean(req.body.phone,30), address=clean(req.body.address,200);
+  if(!name) throw new UserError("Enter your name.");
+  const updated=await store.updateUser(req.user.email,{name,phone,address});
+  const safe={email:updated.email,name:updated.name,phone:updated.phone,address:updated.address||"",role:updated.role,approved:updated.approved};
+  for(const [key,value] of sessions) if(value.email===updated.email) sessions.set(key,safe);
+  res.json({user:safe});
+}));
+
 app.get("/api/auth/me", (req,res) => req.user ? res.json({user:req.user}) : res.status(401).json({error:"Please sign in."}));
 app.post("/api/auth/logout", (req,res) => { sessions.delete(String(req.get("authorization")||"").replace(/^Bearer /,"")); res.json({ok:true}); });
 
