@@ -543,7 +543,7 @@ function renderTracker(order) {
     <div class="track-items">
       ${order.items
         .map((l) => {
-          const extra = [l.unit, l.size, ...l.addons.map((a) => "+ " + a), ...l.removed.map((r) => "No " + r.toLowerCase())].filter(Boolean);
+          const extra = [l.unit, l.size, ...(l.spice ? ["Spice: " + l.spice] : []), ...l.addons.map((a) => "+ " + a), ...l.removed.map((r) => "No " + r.toLowerCase())].filter(Boolean);
           return `<div class="row"><span>${l.qty}× ${esc(l.name)}${extra.length ? ` <span class="muted">(${extra.map(esc).join(", ")})</span>` : ""}</span><span>${money(l.lineTotal)}</span></div>`;
         })
         .join("")}
