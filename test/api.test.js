@@ -341,8 +341,11 @@ test("admin can mark payment received or not received", async () => {
 });
 
 test("driver pickup and customer delivery OTPs are verified separately", async () => {
+  const registration=await json("POST","/api/auth/register",{name:"Delivery Customer",email:"delivery-customer@example.com",phone:customer.phone,password:"customer-password-123",role:"customer"});
+  const customerSession=await registration.json();
   const delivery={type:"delivery",customer:{...customer,address:"Calle Mayor 1"},items:[{itemId:"classic-smash",qty:3}]};
-  const placed=await placeOrder(delivery);
+  const placedRes=await fetch(base+"/api/orders",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+customerSession.token},body:JSON.stringify(delivery)});
+  const placed={res:placedRes,data:await placedRes.json()};
   const id=placed.data.order.id;
   assert.equal(placed.res.status,201);
   await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},admin);
@@ -364,6 +367,10 @@ test("driver pickup and customer delivery OTPs are verified separately", async (
   const managed=adminOrders.find(o=>o.id===id);
   assert.match(managed.pickupOtp,/^\d{6}$/);
   assert.match(managed.deliveryOtp,/^\d{6}$/);
+  const customerView=await (await fetch(base+"/api/orders/"+id,{headers:{"Authorization":"Bearer "+customerSession.token}})).json();
+  assert.equal(customerView.order.deliveryOtp,managed.deliveryOtp,"customer account sees its delivery OTP");
+  const publicView=await (await fetch(base+"/api/orders/"+id)).json();
+  assert.equal("deliveryOtp" in publicView.order,false,"public tracking never reveals the OTP");
 
   const jobs=await (await json("GET","/api/driver/orders",undefined,driverHeaders)).json();
   const job=jobs.orders.find(o=>o.id===id);
