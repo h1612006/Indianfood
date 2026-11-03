@@ -11,6 +11,8 @@ let currency = "€";
 let timer = null;
 let knownIds = new Set();
 let firstLoad = true;
+let menuItems = [];
+let stock = {};
 
 const ACTIVE = ["received", "preparing", "ready"];
 
@@ -54,6 +56,7 @@ async function load() {
     orders = data.orders;
     showBoard();
     $("#boardErr").hidden = true;
+    try { await loadStock(); } catch (stockError) { $("#stockItems").textContent = "Could not load stock: " + stockError.message; }
 
     const newOnes = orders.filter((o) => !knownIds.has(o.id));
     if (!firstLoad && newOnes.length) beep();
@@ -72,6 +75,25 @@ async function load() {
     $("#boardErr").hidden = false;
   }
   timer = setTimeout(load, 5000);
+}
+
+async function loadStock() {
+  const data = await api("/api/admin/stock");
+  stock = data.stock || {};
+  renderStock();
+}
+
+function renderStock() {
+  $("#stockItems").innerHTML = menuItems.map((item) => {
+    const available = stock[item.id] !== false;
+    return `<div class="stock-row"><strong>${esc(item.name)}</strong><button class="stock-toggle ${available ? "" : "off"}" data-stock="${esc(item.id)}" data-available="${available}">${available ? "In stock" : "Out of stock"}</button></div>`;
+  }).join("");
+}
+
+async function setStock(id, available, button) {
+  button.disabled = true;
+  try { const data = await api("/api/admin/stock/" + encodeURIComponent(id), { method:"PATCH", body:JSON.stringify({available}) }); stock = data.stock || stock; renderStock(); }
+  catch (ex) { alert(ex.message); button.disabled = false; }
 }
 
 function beep() {
@@ -141,7 +163,7 @@ function render() {
         <div>
           <span class="o-pill ${esc(o.type)}">${o.type === "delivery" ? "🛵 Delivery" : "🏪 Pickup"}</span>
           <span class="o-pill">${esc(o.status)}</span>
-          <span class="o-pill">${o.payment === "card" ? "Card (demo)" : "Pay " + (o.type === "delivery" ? "on delivery" : "at counter")}</span>
+          <span class="o-pill">${({cash:"Cash",card:"Card",bizum:"Bizum",counter:"Pay at counter"})[o.payment] || esc(o.payment)}</span>
         </div>
         <div class="o-cust">
           <strong>${esc(o.customer.name)}</strong> · ${esc(o.customer.phone)}
@@ -150,7 +172,7 @@ function render() {
         <div class="o-items">
           ${o.items
             .map((l) => {
-              const extra = [l.unit, l.size, ...l.addons.map((a) => "+ " + a), ...l.removed.map((r) => "NO " + r.toUpperCase())].filter(Boolean);
+              const extra = [l.unit, l.size, ...(l.spice ? ["Spice: " + l.spice] : []), ...l.addons.map((a) => "+ " + a), ...l.removed.map((r) => "NO " + r.toUpperCase())].filter(Boolean);
               return `<div class="l"><strong>${l.qty}×</strong> ${esc(l.name)}${extra.length ? `<span class="m">${extra.map(esc).join(" · ")}</span>` : ""}</div>`;
             })
             .join("")}
@@ -179,7 +201,9 @@ async function setStatus(id, status) {
 async function boot() {
   // The menu file tells us which currency symbol to show.
   try {
-    currency = (await (await fetch("/api/menu")).json()).currency || currency;
+    const menu = await (await fetch("/api/menu")).json();
+    currency = menu.currency || currency;
+    menuItems = menu.items || [];
   } catch (_) {
     /* keep default */
   }
@@ -206,6 +230,11 @@ async function boot() {
       filter = b.dataset.filter;
       render();
     }
+  });
+
+  $("#stockItems").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-stock]");
+    if (b) setStock(b.dataset.stock, b.dataset.available !== "true", b);
   });
 
   $("#orders").addEventListener("click", (e) => {

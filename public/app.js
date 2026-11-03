@@ -12,6 +12,7 @@ let menu = null;
 const itemsById = new Map();
 
 const money = (n) => `${menu.currency}${n.toFixed(2)}`;
+const isAvailable = (item) => !menu.stock || menu.stock[item.id] !== false;
 const round2 = (n) => Math.round(n * 100) / 100;
 const MAX_QTY = 100; // keep in step with the server
 
@@ -153,14 +154,14 @@ function renderMenu() {
           ${items
             .map(
               (i) => `
-            <button class="card" data-id="${esc(i.id)}" data-cat="${esc(i.category)}">
+            <button class="card" data-id="${esc(i.id)}" data-cat="${esc(i.category)}" ${!isAvailable(i) ? "disabled" : ""}>
               <div class="card-art${i.image ? " has-img" : ""}">${artHtml(i)}</div>
               <div class="card-body">
                 <div class="card-title"><h3>${esc(i.name)}</h3>${priceHtml(i)}</div>
                 <p class="desc">${esc(i.description)}</p>
                 <div class="card-foot">
                   <span>${tagsHtml(i)}${i.calories ? `<span class="cal">${i.calories} kcal</span>` : ""}</span>
-                  <span class="add-chip" aria-hidden="true">+</span>
+                  ${!isAvailable(i) ? `<span class="stock-badge">OUT OF STOCK</span>` : `<span class="add-chip" aria-hidden="true">+</span>`}
                 </div>
               </div>
             </button>`
@@ -195,8 +196,9 @@ let draft = null; // {item,size,addons:Set,removed:Set,qty}
 
 function openItem(id) {
   const item = itemsById.get(id);
+  if (!isAvailable(item)) { toast("Out of stock"); return; }
   const sizes = sizeList(item);
-  draft = { item, size: sizes ? sizes[0].id : null, addons: new Set(), removed: new Set(), qty: 1 };
+  draft = { item, size: sizes ? sizes[0].id : null, spice: item.spiceLevels ? item.spiceLevels[0] : null, addons: new Set(), removed: new Set(), qty: 1 };
   renderItem();
   openOverlay("#itemOverlay");
 }
@@ -232,6 +234,12 @@ function renderItem() {
               <span>${esc(a.name)}</span><span class="opt-price">+${money(a.price)}</span></label>`
             )
             .join("")}</div>`
+        : ""
+    }
+
+    ${
+      (item.spiceLevels || []).length
+        ? `<div class="group"><h4>Spice level</h4>${item.spiceLevels.map((level) => `<label class="opt"><input type="radio" name="spice" value="${esc(level)}" ${draft.spice === level ? "checked" : ""} required><span>${esc(level)}</span></label>`).join("")}</div>`
         : ""
     }
 
@@ -284,12 +292,14 @@ function renderItem() {
 }
 
 function lineKey(l) {
-  return [l.itemId, l.size || "", [...l.addons].sort().join(","), [...l.removed].sort().join(",")].join("|");
+  return [l.itemId, l.size || "", l.spice || "", [...l.addons].sort().join(","), [...l.removed].sort().join(",")].join("|");
 }
 
 function addDraftToCart() {
+  if (!isAvailable(draft.item)) { toast("Out of stock"); closeOverlay($("#itemOverlay")); return; }
   const line = {
     itemId: draft.item.id,
+    spice: draft.spice,
     qty: draft.qty,
     size: draft.size,
     addons: [...draft.addons],
@@ -311,6 +321,7 @@ function lineMeta(l) {
   const item = itemsById.get(l.itemId);
   const parts = [];
   if (item.unit) parts.push(item.unit);
+  if (l.spice) parts.push("Spice: " + l.spice);
   const sizes = sizeList(item);
   if (sizes) parts.push((sizes.find((s) => s.id === l.size) || sizes[0]).name);
   for (const id of l.addons) {
@@ -343,10 +354,11 @@ function renderCartDrawer() {
     .map((l) => {
       const item = itemsById.get(l.itemId);
       const meta = lineMeta(l);
+      const unavailable = !isAvailable(item);
       return `<div class="line" data-key="${esc(l.key)}">
         <div class="line-emoji">${artHtml(item)}</div>
         <div>
-          <div class="line-name">${esc(item.name)}</div>
+          <div class="line-name">${esc(item.name)}${unavailable ? ` <strong class="stock-badge">OUT OF STOCK</strong>` : ""}</div>
           ${meta.length ? `<div class="line-meta">${meta.map(esc).join(" · ")}</div>` : ""}
           <div class="line-actions">
             <div class="stepper">
@@ -364,6 +376,7 @@ function renderCartDrawer() {
 
   const t = cartTotals();
   const underMin = orderType === "delivery" && t.subtotal < menu.minDeliveryOrder;
+  const hasUnavailable = cart.some((l) => !isAvailable(itemsById.get(l.itemId)));
   let note = "";
   if (underMin) {
     note = `<p class="note warn">Delivery needs a minimum of ${money(menu.minDeliveryOrder)} — add ${money(round2(menu.minDeliveryOrder - t.subtotal))} more, or switch to pickup.</p>`;
@@ -378,7 +391,8 @@ function renderCartDrawer() {
       <div class="row grand"><span>Total</span><span>${money(t.total)}</span></div>
     </div>
     ${note}
-    <button class="btn primary block" id="toCheckout" ${underMin ? "disabled" : ""}>Go to checkout</button>`;
+    ${hasUnavailable ? `<p class="note warn">Remove out-of-stock items before checkout.</p>` : ""}
+    <button class="btn primary block" id="toCheckout" ${underMin || hasUnavailable ? "disabled" : ""}>Go to checkout</button>`;
 
   $("#toCheckout", foot).addEventListener("click", openCheckout);
 }
@@ -417,13 +431,9 @@ function openCheckout() {
   const t = cartTotals();
   const delivery = orderType === "delivery";
   $("#addressRow").hidden = !delivery;
-  $("#payCounterLabel").textContent = delivery ? "Pay on delivery" : "Pay at the counter";
   $("#checkoutError").hidden = true;
 
-  // The card option is only a demo, so it is hidden unless the menu turns it on.
-  const cardOpt = $('#checkoutForm input[name="payment"][value="card"]');
-  cardOpt.closest("label").hidden = !menu.cardPaymentDemo;
-  if (!menu.cardPaymentDemo) $('#checkoutForm input[name="payment"][value="counter"]').checked = true;
+  $('#checkoutForm input[name="payment"][value="cash"]').checked = true;
 
   const saved = store("ss_customer") || {};
   const f = $("#checkoutForm").elements;
@@ -457,7 +467,7 @@ function wireCheckout() {
         address: orderType === "delivery" ? f.address.value : "",
         notes: f.notes.value,
       },
-      items: cart.map((l) => ({ itemId: l.itemId, qty: l.qty, size: l.size, addons: l.addons, removed: l.removed })),
+      items: cart.map((l) => ({ itemId: l.itemId, qty: l.qty, size: l.size, spice: l.spice, addons: l.addons, removed: l.removed })),
     };
 
     btn.disabled = true;
@@ -518,7 +528,7 @@ function renderTracker(order) {
   $("#trackBody").innerHTML = `
     <div class="track-id">ORDER ${esc(order.id)}</div>
     <h2 class="track-title" id="trackTitle">${esc(headline(order))}</h2>
-    <p class="muted">${order.type === "delivery" ? "Delivery" : "Pickup"} · ${order.payment === "card" ? "Card (demo)" : order.type === "delivery" ? "Pay on delivery" : "Pay at the counter"}</p>
+    <p class="muted">${order.type === "delivery" ? "Delivery" : "Pickup"} · ${({cash:"Cash",card:"Card",bizum:"Bizum",counter:order.type === "delivery" ? "Pay on delivery" : "Pay at the counter"})[order.payment] || esc(order.payment)}</p>
     ${
       cancelled
         ? `<div class="cancelled-banner">Sorry — the restaurant cancelled this order. Please call us or place a new one.</div>`
@@ -588,6 +598,30 @@ function showTrackButton() {
   btn.onclick = () => id && openTracker(id);
 }
 
+
+async function refreshStock() {
+  try {
+    const res = await fetch("/api/menu", { cache: "no-store" });
+    if (!res.ok) return;
+    const latest = await res.json();
+    menu.stock = latest.stock || {};
+    $(".card").forEach((card) => {
+      const item = itemsById.get(card.dataset.id);
+      const available = isAvailable(item);
+      card.disabled = !available;
+      const marker = $(".add-chip, .stock-badge", card);
+      if (!available && marker && !marker.classList.contains("stock-badge")) {
+        marker.outerHTML = '<span class="stock-badge">OUT OF STOCK</span>';
+      } else if (available && marker && marker.classList.contains("stock-badge")) {
+        marker.outerHTML = '<span class="add-chip" aria-hidden="true">+</span>';
+      }
+    });
+    if (cart.some((line) => !isAvailable(itemsById.get(line.itemId)))) renderCartBits();
+  } catch (_) {
+    // Keep the last known stock state if the network is temporarily unavailable.
+  }
+}
+
 /* ---------- boot ---------- */
 
 async function init() {
@@ -610,6 +644,7 @@ async function init() {
   wireCheckout();
   renderCartBits();
   showTrackButton();
+  setInterval(refreshStock, 15000);
 
   const fromUrl = new URLSearchParams(location.search).get("order");
   if (fromUrl) openTracker(fromUrl.toUpperCase());

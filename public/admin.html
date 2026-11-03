@@ -41,6 +41,15 @@
     .o-actions .btn { flex: 1; padding: 10px; font-size: 14px; }
     .btn.danger { background: transparent; color: #ff8787; border: 2px solid #ff8787; flex: 0 0 auto; }
     .empty-a { text-align: center; color: #b9a79d; padding: 60px 10px; }
+    .stock-panel { background:#2b1d18; border:1px solid #44302a; border-radius:16px; padding:16px; margin-bottom:18px; }
+    .stock-panel h2 { font-size:19px; margin-bottom:4px; }
+    .stock-panel p { color:#b9a79d; margin:4px 0 12px; font-size:13px; }
+    .stock-items { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:8px; }
+    .stock-row { display:flex; align-items:center; justify-content:space-between; gap:10px; background:#1f1613; border-radius:10px; padding:9px 10px; }
+    .stock-row strong { font-size:13px; }
+    .stock-toggle { border:0; border-radius:999px; padding:7px 10px; font-weight:800; cursor:pointer; background:#2f9e44; color:white; white-space:nowrap; }
+    .stock-toggle.off { background:#b42318; }
+    .stock-toggle:disabled { opacity:.5; cursor:wait; }
     .a-error { background: #5b1a22; color: #ffd6da; padding: 10px 12px; border-radius: 10px; margin-bottom: 12px; }
   </style>
 </head>
@@ -60,6 +69,7 @@
   </div>
 
   <main id="board" class="a-wrap" hidden>
+    <section class="stock-panel"><h2>Menu stock</h2><p>Mark unavailable items as out of stock. Changes are saved.</p><div id="stockItems" class="stock-items">Loading menu…</div></section>
     <div class="filters" id="filters"></div>
     <div id="boardErr" class="a-error" hidden></div>
     <div class="orders" id="orders"></div>

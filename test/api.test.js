@@ -249,3 +249,20 @@ test("unknown API routes return JSON 404", async () => {
   assert.equal(res.status, 404);
   assert.equal((await res.json()).error, "Not found.");
 });
+
+test("admin can persist item stock and unavailable items cannot be ordered", async () => {
+  const id = "classic-smash";
+  const changed = await json("PATCH", "/api/admin/stock/" + id, { available: false }, admin);
+  assert.equal(changed.status, 200);
+  const changedData = await changed.json();
+  const menu = await (await fetch(base + "/api/menu")).json();
+  assert.equal(menu.stock[id], false);
+  const rejected = await placeOrder();
+  assert.equal(rejected.res.status, 400);
+  assert.match(rejected.data.error, /out of stock/i);
+
+  const restored = await json("PATCH", "/api/admin/stock/" + id, { available: true }, admin);
+  assert.equal(restored.status, 200);
+  const restoredData = await restored.json();
+  assert.equal(restoredData.stock[id], true);
+});

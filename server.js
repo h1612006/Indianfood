@@ -19,7 +19,7 @@ const STATUSES = ["received", "preparing", "ready", "completed", "cancelled"];
 const ORDER_TYPES = ["pickup", "delivery"];
 const MAX_QTY = 100; // per line, e.g. 60 samosas for a party
 // "card" is only a demo (nothing is charged), so it is off unless the menu turns it on.
-const PAYMENTS = menu.cardPaymentDemo ? ["counter", "card"] : ["counter"];
+const PAYMENTS = menu.payments || (menu.cardPaymentDemo ? ["counter", "card"] : ["counter"]);
 
 const store = createStore();
 
@@ -55,6 +55,11 @@ function priceLine(raw) {
     sizeName = size.name;
   }
 
+  let spice = null;
+  if (Array.isArray(item.spiceLevels) && item.spiceLevels.length) {
+    if (!item.spiceLevels.includes(raw.spice)) throw new UserError("Choose a spice level for " + item.name + ".");
+    spice = raw.spice;
+  }
   const addonIds = Array.isArray(raw.addons) ? [...new Set(raw.addons)] : [];
   const addons = addonIds.map((id) => {
     const a = (item.addons || []).find((x) => x.id === id);
@@ -73,6 +78,7 @@ function priceLine(raw) {
     name: item.name,
     emoji: item.emoji,
     unit: item.unit || null,
+    spice,
     qty,
     size: sizeName,
     addons,
@@ -91,7 +97,8 @@ function buildOrder(body) {
   body = body || {};
   const type = body.type;
   if (!ORDER_TYPES.includes(type)) throw new UserError("Choose pickup or delivery.");
-  const payment = PAYMENTS.includes(body.payment) ? body.payment : "counter";
+  const payment = body.payment || (PAYMENTS.includes("counter") ? "counter" : PAYMENTS[0]);
+  if (!PAYMENTS.includes(payment)) throw new UserError("Choose a valid payment method.");
 
   const c = body.customer || {};
   const customer = {
@@ -181,11 +188,15 @@ app.get(
   })
 );
 
-app.get("/api/menu", (_req, res) => res.json(menu));
+app.get("/api/menu", wrap(async (_req, res) => res.json({ ...menu, stock: await store.listStock() })));
 
 app.post(
   "/api/orders",
   wrap(async (req, res) => {
+    const stock = await store.listStock();
+    for (const line of (req.body && Array.isArray(req.body.items) ? req.body.items : [])) {
+      if (stock[line && line.itemId] === false) throw new UserError("Out of stock.");
+    }
     const order = buildOrder(req.body); // throws UserError on bad input
 
     for (let attempt = 0; ; attempt++) {
@@ -228,6 +239,18 @@ app.get(
     res.json({ orders: await store.listOrders() });
   })
 );
+
+
+app.get("/api/admin/stock", requireAdmin, wrap(async (_req, res) => {
+  res.json({ stock: await store.listStock() });
+}));
+
+app.patch("/api/admin/stock/:id", requireAdmin, wrap(async (req, res) => {
+  const id = String(req.params.id);
+  if (!itemsById.has(id)) throw new UserError("Unknown menu item.");
+  if (typeof req.body.available !== "boolean") throw new UserError("Stock availability must be true or false.");
+  res.json({ stock: await store.setStock(id, req.body.available) });
+}));
 
 app.patch(
   "/api/admin/orders/:id",

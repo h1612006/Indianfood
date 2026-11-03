@@ -6,11 +6,12 @@ An online ordering app for an Indian snacks shop: customers browse the menu with
 
 **Customers**
 - Menu with photos, categories and a unit under each price (per piece, per box, per kg, 20 pieces...)
+- Required spice selection on each item: Mid, High or Super High
 - Optional item customization (sizes, paid extras, free removals) when an item defines them in `data/menu.json`
 - Up to 100 of any item per order
 - Basket with quantity controls, saved between visits
 - Pickup or delivery, with a delivery fee, a free-delivery threshold and a minimum order
-- Checkout with name, phone, address (delivery) and kitchen notes
+- Checkout with name, phone, address (delivery), kitchen notes and cash/card/Bizum payment choice
 - Live order tracker (Received → Preparing → Ready / On its way → Done) that updates by itself
 - Works on phones and desktops
 
@@ -18,6 +19,7 @@ An online ordering app for an Indian snacks shop: customers browse the menu with
 - Password login
 - Live board of orders, refreshed every 5 seconds, with a beep for new orders
 - One-tap status buttons, cancel and reopen
+- Per-item in-stock/out-of-stock controls, saved persistently in Postgres (or the local file store)
 - Active / Done / All filters
 
 **Security basics**
@@ -126,7 +128,7 @@ Free-plan limits (see Render's [free tier page](https://render.com/docs/free)): 
 
 ## Change the menu, brand and prices
 
-Everything is in [`data/menu.json`](data/menu.json): brand name, tagline, currency symbol, delivery fee, free-delivery threshold, minimum delivery order, categories and every item. Photos live in [`public/img/`](public/img/). After editing, commit and push; the hosting redeploys by itself (locally, restart the server).
+Everything is in [`data/menu.json`](data/menu.json): brand name, tagline, currency symbol, delivery fee, free-delivery threshold, minimum delivery order, categories and every item. Photos live in [`public/img/`](public/img/); the customer menu displays the complete image without cropping. After editing, commit and push; the hosting redeploys by itself (locally, restart the server).
 
 One item looks like this:
 
@@ -144,9 +146,9 @@ One item looks like this:
 ```
 
 - `unit` is optional text shown after the price ("per piece", "per box", "20 pieces", "250 g").
-- `image` is optional. Without it the `emoji` is shown instead. Put the photo in `public/img/` (a square JPG around 500 px keeps the page fast).
+- `image` is optional. Without it the `emoji` is shown instead. Put the full photo in `public/img/`; the page uses `object-fit: contain` so the image is not cropped.
 - Optional extras: `"sizes": "standard"` (sizes are defined once under `sizes`), `"addons": [{"id","name","price"}]`, and `"removals": ["Onions"]`.
-- `"cardPaymentDemo": true` shows a fake "Card" option (nothing is charged). Leave it `false` until real payments are added.
+- `payments` lists accepted choices (`cash`, `card`, `bizum`). Card and Bizum are recorded as the customer-selected method only; no online payment is processed.
 - Run `npm test` after editing: it checks every item for a missing name, bad price, unknown category or missing photo.
 
 ## Project structure
