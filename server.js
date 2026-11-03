@@ -24,6 +24,7 @@ const PAYMENTS = menu.payments || (menu.cardPaymentDemo ? ["counter", "card"] : 
 
 const store = createStore();
 const otpFailures = new Map();
+const sessions = new Map();
 
 /* A mistake in what the customer sent (shown to them, HTTP 400). */
 class UserError extends Error {}
@@ -176,6 +177,7 @@ const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "50kb" }));
 app.use(express.static(path.join(__dirname, "public")));
+app.use((req,res,next)=>{const token=String(req.get("authorization")||"").replace(/^Bearer /,"");req.user=sessions.get(token)||null;next();});
 
 // Express 4 does not catch errors from async handlers, so wrap them.
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -227,6 +229,36 @@ app.get(
     res.json({ order: publicOrder(order) });
   })
 );
+
+
+/* ---------- customer and staff accounts ---------- */
+app.post("/api/auth/register", wrap(async (req,res) => {
+  const email = clean(req.body.email,160).toLowerCase();
+  const name = clean(req.body.name,80);
+  const phone = clean(req.body.phone,30);
+  const password = String(req.body.password || "");
+  const role = req.body.role || "customer";
+  if (!email.includes("@") || !name || password.length < 10) throw new UserError("Enter a valid email, your name and a password of at least 10 characters.");
+  if (!["customer","chef","driver"].includes(role)) throw new UserError("Choose customer, chef or driver.");
+  const salt = crypto.randomBytes(16).toString("hex");
+  const user = {email,name,phone,role,approved:role==="customer",status:role==="customer"?"approved":"pending",passwordSalt:salt,passwordHash:crypto.scryptSync(password,salt,64).toString("hex"),createdAt:new Date().toISOString()};
+  try { await store.saveUser(user); } catch(e) { if(e.code==="USER_EXISTS") throw new UserError("An account with this email already exists."); throw e; }
+  if(role!=="customer") return res.status(201).json({message:"Staff application sent for admin approval.",status:"pending"});
+  const token=crypto.randomBytes(32).toString("hex"); sessions.set(token,{email,name,phone,role,approved:true});
+  res.status(201).json({token,user:{email,name,phone,role,approved:true}});
+}));
+app.post("/api/auth/login", wrap(async (req,res) => {
+  const email=clean(req.body.email,160).toLowerCase(), password=String(req.body.password||"");
+  const user=await store.getUser(email);
+  const hash=user?crypto.scryptSync(password,user.passwordSalt,64).toString("hex"):"";
+  if(!user || hash!==user.passwordHash) return res.status(401).json({error:"Email or password is incorrect."});
+  if(!user.approved) return res.status(403).json({error:"Your staff account is awaiting admin approval."});
+  const token=crypto.randomBytes(32).toString("hex");
+  const safe={email:user.email,name:user.name,phone:user.phone,role:user.role,approved:user.approved};
+  sessions.set(token,safe); res.json({token,user:safe});
+}));
+app.get("/api/auth/me", (req,res) => req.user ? res.json({user:req.user}) : res.status(401).json({error:"Please sign in."}));
+app.post("/api/auth/logout", (req,res) => { sessions.delete(String(req.get("authorization")||"").replace(/^Bearer /,"")); res.json({ok:true}); });
 
 /* ---------- admin ---------- */
 
