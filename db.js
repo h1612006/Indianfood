@@ -28,6 +28,8 @@ function createFileStore(dir) {
   const file = path.join(dir, "orders.json");
   let orders = [];
   let stock = {};
+  let menuItems = {};
+  const menuItemsFile = path.join(dir, "menu-items.json");
   const stockFile = path.join(dir, "stock.json");
   function persistStock() {
     const tmp = stockFile + ".tmp";
@@ -52,6 +54,7 @@ function createFileStore(dir) {
         orders = [];
       }
       try { stock = JSON.parse(fs.readFileSync(stockFile, "utf8")); } catch (_) { stock = {}; }
+      try { menuItems = JSON.parse(fs.readFileSync(menuItemsFile, "utf8")); } catch (_) { menuItems = {}; }
     },
 
     async ping() {
@@ -73,6 +76,21 @@ function createFileStore(dir) {
 
     async getOrder(id) {
       return orders.find((o) => o.id === id) || null;
+    },
+
+    async listMenuItems() { return Object.values(menuItems); },
+    async saveMenuItem(item) {
+      const before = menuItems[item.id];
+      menuItems[item.id] = item;
+      const tmp = menuItemsFile + ".tmp";
+      try {
+        fs.writeFileSync(tmp, JSON.stringify(menuItems, null, 2));
+        fs.renameSync(tmp, menuItemsFile);
+      } catch (e) {
+        if (before === undefined) delete menuItems[item.id]; else menuItems[item.id] = before;
+        throw e;
+      }
+      return item;
     },
 
     async listStock() { return { ...stock }; },
@@ -145,6 +163,11 @@ function createPgStore() {
               updated_at  TIMESTAMPTZ NOT NULL,
               data        JSONB NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS menu_items (
+              item_id TEXT PRIMARY KEY,
+              data JSONB NOT NULL,
+              updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
             CREATE TABLE IF NOT EXISTS item_stock (
               item_id TEXT PRIMARY KEY,
               available BOOLEAN NOT NULL,
@@ -184,6 +207,18 @@ function createPgStore() {
         [id]
       );
       return rows[0] ? toOrder(rows[0]) : null;
+    },
+
+    async listMenuItems() {
+      const { rows } = await pool.query("SELECT data FROM menu_items ORDER BY item_id");
+      return rows.map((r) => r.data);
+    },
+    async saveMenuItem(item) {
+      await pool.query(
+        "INSERT INTO menu_items (item_id, data) VALUES ($1, $2) ON CONFLICT (item_id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()",
+        [item.id, JSON.stringify(item)]
+      );
+      return item;
     },
 
     async listStock() {
