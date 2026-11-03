@@ -437,10 +437,11 @@ function openCheckout() {
   $('#checkoutForm input[name="payment"][value="cash"]').checked = true;
 
   const saved = store("ss_customer") || {};
+  let profile = {}; try { profile = JSON.parse(localStorage.getItem("ss_customer_profile") || "{}"); } catch (_) {}
   const f = $("#checkoutForm").elements;
-  f.name.value = saved.name || "";
-  f.phone.value = saved.phone || "";
-  f.address.value = saved.address || "";
+  f.name.value = saved.name || profile.name || "";
+  f.phone.value = saved.phone || profile.phone || "";
+  f.address.value = saved.address || profile.address || "";
 
   $("#checkoutSummary").innerHTML = `
     <div class="row"><span>${cartCount()} item${cartCount() === 1 ? "" : "s"} · ${delivery ? "Delivery" : orderType === "eat_here" ? "Eat here" : "Takeaway"}</span><span>${money(t.subtotal)}</span></div>
