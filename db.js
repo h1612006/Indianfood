@@ -29,6 +29,8 @@ function createFileStore(dir) {
   let orders = [];
   let stock = {};
   let menuItems = {};
+  let users = {};
+  const usersFile = path.join(dir, "users.json");
   const menuItemsFile = path.join(dir, "menu-items.json");
   const stockFile = path.join(dir, "stock.json");
   function persistStock() {
@@ -55,6 +57,7 @@ function createFileStore(dir) {
       }
       try { stock = JSON.parse(fs.readFileSync(stockFile, "utf8")); } catch (_) { stock = {}; }
       try { menuItems = JSON.parse(fs.readFileSync(menuItemsFile, "utf8")); } catch (_) { menuItems = {}; }
+      try { users = JSON.parse(fs.readFileSync(usersFile, "utf8")); } catch (_) { users = {}; }
     },
 
     async ping() {
@@ -76,6 +79,24 @@ function createFileStore(dir) {
 
     async getOrder(id) {
       return orders.find((o) => o.id === id) || null;
+    },
+
+    async getUser(email) { return users[email] || null; },
+    async listUsers() { return Object.values(users); },
+    async saveUser(user) {
+      const key = user.email.toLowerCase();
+      if (users[key]) throw Object.assign(new Error("Email already registered"), { code: "USER_EXISTS" });
+      users[key] = user;
+      try { fs.writeFileSync(usersFile + ".tmp", JSON.stringify(users, null, 2)); fs.renameSync(usersFile + ".tmp", usersFile); }
+      catch (e) { delete users[key]; throw e; }
+      return user;
+    },
+    async updateUser(email, patch) {
+      const key = email.toLowerCase(), current = users[key];
+      if (!current) return null;
+      users[key] = { ...current, ...patch };
+      fs.writeFileSync(usersFile + ".tmp", JSON.stringify(users, null, 2)); fs.renameSync(usersFile + ".tmp", usersFile);
+      return users[key];
     },
 
     async listMenuItems() { return Object.values(menuItems); },
@@ -173,6 +194,11 @@ function createPgStore() {
               available BOOLEAN NOT NULL,
               updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
+            CREATE TABLE IF NOT EXISTS app_users (
+              email TEXT PRIMARY KEY,
+              data JSONB NOT NULL,
+              created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
             CREATE INDEX IF NOT EXISTS orders_created_idx ON orders (created_at DESC);
           `);
           return;
@@ -207,6 +233,27 @@ function createPgStore() {
         [id]
       );
       return rows[0] ? toOrder(rows[0]) : null;
+    },
+
+    async getUser(email) {
+      const { rows } = await pool.query("SELECT data FROM app_users WHERE email = $1", [email.toLowerCase()]);
+      return rows[0] ? rows[0].data : null;
+    },
+    async listUsers() {
+      const { rows } = await pool.query("SELECT data FROM app_users ORDER BY created_at DESC");
+      return rows.map(r => r.data);
+    },
+    async saveUser(user) {
+      try { await pool.query("INSERT INTO app_users (email, data) VALUES ($1, $2)", [user.email.toLowerCase(), JSON.stringify(user)]); }
+      catch (e) { if (e.code === "23505") throw Object.assign(new Error("Email already registered"), { code: "USER_EXISTS" }); throw e; }
+      return user;
+    },
+    async updateUser(email, patch) {
+      const current = await this.getUser(email);
+      if (!current) return null;
+      const updated = { ...current, ...patch };
+      const { rows } = await pool.query("UPDATE app_users SET data = $2 WHERE email = $1 RETURNING data", [email.toLowerCase(), JSON.stringify(updated)]);
+      return rows[0] ? rows[0].data : null;
     },
 
     async listMenuItems() {
