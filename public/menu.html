@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Indian Snacks — Order online</title>
+  <meta name="description" content="Indian snacks, ready to order. Pickup or delivery.">
+  <meta name="theme-color" content="#d62828">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Indian Snacks">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" href="/icon-192.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Home">
+      <span class="brand-mark">🥟</span>
+      <span class="brand-name" id="brandName">Indian Snacks</span>
+    </a>
+    <nav class="top-actions">
+      <a class="btn ghost" href="/profile.html">My account</a>
+      <button class="btn ghost" id="trackBtn" hidden>Track order</button>
+      <button class="btn cart-btn" id="cartBtn" aria-label="Open basket">
+        🛒 <span id="cartTotalTop">€0.00</span>
+        <span class="badge" id="cartBadge">0</span>
+      </button>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <div class="hero-inner">
+      <h1 id="tagline">Indian snacks, ready to order.</h1>
+      <p>Choose takeaway, eat here or delivery. Snacks are sold by the piece, box or kilo.</p>
+      <div class="hero-pills">
+        <span>🥟 By the piece, box or kilo</span>
+        <span>🛵 Pickup or delivery</span>
+        <span>⏱️ Live order tracking</span>
+      </div>
+    </div>
+  </section>
+
+  <nav class="cats" id="cats" aria-label="Menu categories"></nav>
+
+  <main class="menu" id="menuRoot">
+    <p class="muted">Loading menu…</p>
+  </main>
+
+  <footer class="footer">
+    <p><strong id="brandFooter">Indian Snacks</strong> · Cash, card or Bizum accepted.</p>
+  </footer>
+
+  <!-- Item customization modal -->
+  <div class="overlay" id="itemOverlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="itemTitle">
+      <button class="close" data-close aria-label="Close">×</button>
+      <div id="itemBody"></div>
+    </div>
+  </div>
+
+  <!-- Basket drawer -->
+  <div class="overlay" id="cartOverlay" hidden>
+    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="cartTitle">
+      <div class="drawer-head">
+        <h2 id="cartTitle">Your basket</h2>
+        <button class="close static" data-close aria-label="Close">×</button>
+      </div>
+      <div class="seg" role="radiogroup" aria-label="Order type">
+        <button class="seg-btn" data-type="pickup" role="radio">🥡 Takeaway</button>
+        <button class="seg-btn" data-type="eat_here" role="radio">🍽️ Eat here</button>
+        <button class="seg-btn" data-type="delivery" role="radio">🛵 Delivery</button>
+      </div>
+      <div class="drawer-body" id="cartBody"></div>
+      <div class="drawer-foot" id="cartFoot"></div>
+    </aside>
+  </div>
+
+  <!-- Checkout modal -->
+  <div class="overlay" id="checkoutOverlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="checkoutTitle">
+      <button class="close" data-close aria-label="Close">×</button>
+      <h2 id="checkoutTitle">Checkout</h2>
+      <form id="checkoutForm" novalidate>
+        <label>Your name
+          <input name="name" autocomplete="name" maxlength="60" required>
+        </label>
+        <label>Phone number
+          <input name="phone" type="tel" autocomplete="tel" maxlength="30" required>
+        </label>
+        <label id="addressRow">Delivery address
+          <input name="address" autocomplete="street-address" maxlength="200">
+        </label>
+        <label>Notes for the kitchen <span class="muted">(optional)</span>
+          <textarea name="notes" rows="2" maxlength="300" placeholder="Allergies, doorbell, extra napkins…"></textarea>
+        </label>
+        <fieldset>
+          <legend>Payment</legend>
+          <label class="radio"><input type="radio" name="payment" value="cash" checked> Cash</label>
+          <label class="radio"><input type="radio" name="payment" value="card"> Card <span class="muted">(payment choice only; no online charge is processed)</span></label>
+          <label class="radio"><input type="radio" name="payment" value="bizum"> Bizum</label>
+        </fieldset>
+        <div class="summary" id="checkoutSummary"></div>
+        <p class="error" id="checkoutError" role="alert" hidden></p>
+        <button class="btn primary block" id="placeBtn" type="submit">Place order</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Order tracking modal -->
+  <div class="overlay" id="trackOverlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="trackTitle">
+      <button class="close" data-close aria-label="Close">×</button>
+      <div id="trackBody"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
