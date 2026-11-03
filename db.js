@@ -295,8 +295,8 @@ function createPgStore() {
 
     async claimOrder(id, driver, at) {
       const { rows } = await pool.query(
-        `UPDATE orders SET updated_at = $3,
-         data = data || jsonb_build_object('driverAcceptedBy', $2::text, 'driverDecision', 'accepted', 'driverAcceptedAt', $3::text, 'updatedAt', $3::text)
+        `UPDATE orders SET updated_at = $3::timestamptz,
+         data = data || jsonb_build_object('driverAcceptedBy', $2::text, 'driverDecision', 'accepted', 'driverAcceptedAt', $3::timestamptz, 'updatedAt', $3::timestamptz)
          WHERE id = $1 AND (data->>'driverAcceptedBy' IS NULL OR data->>'driverAcceptedBy' = $2)
          RETURNING status, created_at, updated_at, data`,
         [id, driver, at]
