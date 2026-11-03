@@ -607,21 +607,23 @@ async function refreshStock() {
     const res = await fetch("/api/menu", { cache: "no-store" });
     if (!res.ok) return;
     const latest = await res.json();
-    menu.stock = latest.stock || {};
-    $(".card").forEach((card) => {
-      const item = itemsById.get(card.dataset.id);
-      const available = isAvailable(item);
-      card.disabled = !available;
-      const marker = $(".add-chip, .stock-badge", card);
-      if (!available && marker && !marker.classList.contains("stock-badge")) {
-        marker.outerHTML = '<span class="stock-badge">OUT OF STOCK</span>';
-      } else if (available && marker && marker.classList.contains("stock-badge")) {
-        marker.outerHTML = '<span class="add-chip" aria-hidden="true">+</span>';
-      }
-    });
-    if (cart.some((line) => !isAvailable(itemsById.get(line.itemId)))) renderCartBits();
+    const catalogChanged = JSON.stringify(menu.items) !== JSON.stringify(latest.items) ||
+      JSON.stringify(menu.categories) !== JSON.stringify(latest.categories);
+    const stockChanged = JSON.stringify(menu.stock || {}) !== JSON.stringify(latest.stock || {});
+
+    // Refresh the whole catalogue as well as stock. This makes new or edited
+    // dishes appear on customer pages that were already open.
+    menu = { ...menu, ...latest, stock: latest.stock || {} };
+    if (catalogChanged) {
+      itemsById.clear();
+      menu.items.forEach((item) => itemsById.set(item.id, item));
+    }
+    if (catalogChanged || stockChanged) {
+      renderMenu();
+      renderCartBits();
+    }
   } catch (_) {
-    // Keep the last known stock state if the network is temporarily unavailable.
+    // Keep the last known menu and stock state if the network is temporarily unavailable.
   }
 }
 
@@ -630,7 +632,7 @@ async function refreshStock() {
 async function init() {
   wireOverlays();
   try {
-    const res = await fetch("/api/menu");
+    const res = await fetch("/api/menu", { cache: "no-store" });
     if (!res.ok) throw new Error("Menu request failed");
     menu = await res.json();
   } catch (_) {

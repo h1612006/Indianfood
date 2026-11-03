@@ -283,16 +283,6 @@ async function boot() {
     if (b) setStock(b.dataset.stock, b.dataset.available !== "true", b);
   });
 
-  $(".manager-tabs").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-manager-tab]");
-    if (!b) return;
-    const target = b.dataset.managerTab;
-    $("#ordersPanel").hidden = target !== "ordersPanel";
-    $("#menuPanel").hidden = target !== "menuPanel";
-    document.querySelectorAll("[data-manager-tab]").forEach((tab) => tab.classList.toggle("active", tab === b));
-    if (target === "menuPanel") loadStock().catch((ex) => { $("#menuItemsEditor").textContent = ex.message; });
-  });
-
   $("#newMenuItem").addEventListener("click", () => openMenuEditor());
   $("#cancelMenuEdit").addEventListener("click", () => { $("#menuEditor").hidden = true; editingMenuId = null; });
   $("#menuItemsEditor").addEventListener("click", (e) => {

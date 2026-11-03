@@ -84,18 +84,16 @@
   </div>
 
   <main id="board" class="a-wrap" hidden>
-    <nav class="manager-tabs" aria-label="Kitchen sections">
-      <button type="button" class="active" data-manager-tab="ordersPanel">Orders</button>
-      <button type="button" data-manager-tab="menuPanel">Stock &amp; Menu</button>
-    </nav>
     <section id="ordersPanel">
       <div class="filters" id="filters"></div>
       <div id="boardErr" class="a-error" hidden></div>
       <div class="orders" id="orders"></div>
     </section>
-    <section id="menuPanel" hidden>
+    <section id="menuPanel" aria-labelledby="menuPanelTitle">
       <div class="stock-panel">
-        <h2>Stock availability</h2>
+        <h2 id="menuPanelTitle">Stock &amp; Menu management</h2>
+        <p>Manage stock and menu items here on the kitchen screen. These controls stay visible below your orders.</p>
+        <h3>Stock availability</h3>
         <p>Switch an item off when it is unavailable. Customers will not be able to order it. Changes are saved.</p>
         <div id="stockItems" class="stock-items">Loading stock…</div>
       </div>
