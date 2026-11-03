@@ -59,6 +59,10 @@
     .manager-tabs button { flex:1; min-width:130px; }
     .kitchen-section[hidden] { display:none !important; }
     @media(max-width:600px) { .manager-tabs { top:54px; gap:6px; } .manager-tabs button { flex:1 1 calc(50% - 6px); padding:10px 8px; } }
+    .manager-tabs { position:sticky; top:58px; z-index:8; background:#1f1613; padding:10px 0; }
+    .manager-tabs button { flex:1; min-width:130px; }
+    .kitchen-section[hidden] { display:none !important; }
+    @media(max-width:600px) { .manager-tabs { top:54px; gap:6px; } .manager-tabs button { flex:1 1 calc(50% - 6px); padding:10px 8px; } }
     .menu-list { display:grid; gap:8px; margin-top:12px; }
     .menu-item-row { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:10px; align-items:center; background:#1f1613; border-radius:10px; padding:10px; }
     .menu-item-row small { display:block; color:#b9a79d; margin-top:3px; }
@@ -95,21 +99,27 @@
       <button type="button" data-section="menuPanel">Menu</button>
       <button type="button" data-section="staffApprovals">Staff approvals</button>
     </nav>
+    <nav class="manager-tabs" id="kitchenNav" aria-label="Kitchen sections">
+      <button type="button" class="active" data-section="ordersPanel">Orders</button>
+      <button type="button" data-section="stockPanel">Stock</button>
+      <button type="button" data-section="menuPanel">Menu</button>
+      <button type="button" data-section="staffApprovals">Staff approvals</button>
+    </nav>
     <section id="ordersPanel" class="kitchen-section">
       <div class="filters" id="filters"></div>
       <div id="boardErr" class="a-error" hidden></div>
       <div class="orders" id="orders"></div>
     </section>
-    <section id="menuPanel" aria-labelledby="menuPanelTitle">
+    <section id="stockPanel" class="kitchen-section" hidden>
       <div class="stock-panel">
-        <h2 id="menuPanelTitle">Stock &amp; Menu management</h2>
-        <p>Manage stock and menu items here on the kitchen screen. These controls stay visible below your orders.</p>
-        <h3>Stock availability</h3>
+        <h2>Stock availability</h2>
         <p>Switch an item off when it is unavailable. Customers will not be able to order it. Changes are saved.</p>
         <div id="stockItems" class="stock-items">Loading stock…</div>
       </div>
+    </section>
+    <section id="menuPanel" class="kitchen-section" hidden>
       <div class="stock-panel">
-        <div class="o-head"><h2>Menu articles</h2><button type="button" class="btn primary" id="newMenuItem">＋ Add new item</button></div>
+        <div class="o-head"><h2>Menu items</h2><button type="button" class="btn primary" id="newMenuItem">＋ Add new item</button></div>
         <p>Add new dishes or edit the name, description, category, price, unit and photo shown on the customer menu.</p>
         <div id="menuItemsEditor" class="menu-list">Loading menu…</div>
       </div>
