@@ -13,6 +13,8 @@ let knownIds = new Set();
 let firstLoad = true;
 let menuItems = [];
 let stock = {};
+let menuCategories = [];
+let editingMenuId = null;
 
 const ACTIVE = ["received", "preparing", "ready", "out_for_delivery", "picked_up"];
 
@@ -78,9 +80,15 @@ async function load() {
 }
 
 async function loadStock() {
-  const data = await api("/api/admin/stock");
-  stock = data.stock || {};
+  const [stockData, menuData] = await Promise.all([
+    api("/api/admin/stock"),
+    api("/api/admin/menu/items"),
+  ]);
+  stock = stockData.stock || {};
+  menuItems = menuData.items || [];
+  menuCategories = menuData.categories || [];
   renderStock();
+  renderMenuItems();
 }
 
 function renderStock() {
@@ -88,6 +96,37 @@ function renderStock() {
     const available = stock[item.id] !== false;
     return `<div class="stock-row"><strong>${esc(item.name)}</strong><button class="stock-toggle ${available ? "" : "off"}" data-stock="${esc(item.id)}" data-available="${available}">${available ? "In stock" : "Out of stock"}</button></div>`;
   }).join("");
+}
+
+function renderMenuItems() {
+  $("#menuItemsEditor").innerHTML = menuItems.map((item) => {
+    const category = menuCategories.find((c) => c.id === item.category);
+    return `<div class="menu-item-row">
+      <div><strong>${esc(item.emoji || "🍽️")} ${esc(item.name)}</strong><small>${esc(category ? category.name : item.category)} · ${esc(item.unit || "standard portion")}</small></div>
+      <strong class="item-price">${money(item.price)}</strong>
+      <button type="button" class="btn" data-edit-menu="${esc(item.id)}">Edit</button>
+    </div>`;
+  }).join("") || '<p class="empty-a">No menu items yet.</p>';
+}
+
+function openMenuEditor(item = null) {
+  editingMenuId = item ? item.id : null;
+  const form = $("#menuItemForm");
+  $("#menuEditorTitle").textContent = item ? "Edit menu item" : "Add menu item";
+  $("#saveMenuItem").textContent = item ? "Save changes" : "Add item";
+  form.elements.name.value = item ? item.name : "";
+  form.elements.category.innerHTML = menuCategories.map((category) =>
+    `<option value="${esc(category.id)}">${esc(category.emoji || "")} ${esc(category.name)}</option>`
+  ).join("");
+  form.elements.category.value = item ? item.category : (menuCategories[0] && menuCategories[0].id) || "";
+  form.elements.price.value = item ? item.price : "";
+  form.elements.unit.value = item ? item.unit || "" : "";
+  form.elements.description.value = item ? item.description || "" : "";
+  form.elements.image.value = item ? item.image || "" : "";
+  form.elements.emoji.value = item ? item.emoji || "" : "🍽️";
+  $("#menuFormError").hidden = true;
+  $("#menuEditor").hidden = false;
+  $("#menuEditor").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function setStock(id, available, button) {
@@ -242,6 +281,55 @@ async function boot() {
   $("#stockItems").addEventListener("click", (e) => {
     const b = e.target.closest("[data-stock]");
     if (b) setStock(b.dataset.stock, b.dataset.available !== "true", b);
+  });
+
+  $(".manager-tabs").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-manager-tab]");
+    if (!b) return;
+    const target = b.dataset.managerTab;
+    $("#ordersPanel").hidden = target !== "ordersPanel";
+    $("#menuPanel").hidden = target !== "menuPanel";
+    document.querySelectorAll("[data-manager-tab]").forEach((tab) => tab.classList.toggle("active", tab === b));
+    if (target === "menuPanel") loadStock().catch((ex) => { $("#menuItemsEditor").textContent = ex.message; });
+  });
+
+  $("#newMenuItem").addEventListener("click", () => openMenuEditor());
+  $("#cancelMenuEdit").addEventListener("click", () => { $("#menuEditor").hidden = true; editingMenuId = null; });
+  $("#menuItemsEditor").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-edit-menu]");
+    if (b) openMenuEditor(menuItems.find((item) => item.id === b.dataset.editMenu));
+  });
+  $("#menuItemForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const body = {
+      name: form.elements.name.value.trim(),
+      category: form.elements.category.value,
+      price: Number(form.elements.price.value),
+      unit: form.elements.unit.value.trim(),
+      description: form.elements.description.value.trim(),
+      image: form.elements.image.value.trim(),
+      emoji: form.elements.emoji.value.trim() || "🍽️",
+    };
+    const save = $("#saveMenuItem");
+    const error = $("#menuFormError");
+    save.disabled = true;
+    error.hidden = true;
+    try {
+      const path = editingMenuId
+        ? "/api/admin/menu/items/" + encodeURIComponent(editingMenuId)
+        : "/api/admin/menu/items";
+      await api(path, { method: editingMenuId ? "PATCH" : "POST", body: JSON.stringify(body) });
+      $("#menuEditor").hidden = true;
+      editingMenuId = null;
+      await loadStock();
+      alert("Menu item saved. It is now available on the customer menu.");
+    } catch (ex) {
+      error.textContent = ex.message;
+      error.hidden = false;
+    } finally {
+      save.disabled = false;
+    }
   });
 
   $("#orders").addEventListener("click", (e) => {
