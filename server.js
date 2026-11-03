@@ -23,6 +23,7 @@ const MAX_QTY = 100; // per line, e.g. 60 samosas for a party
 const PAYMENTS = menu.payments || (menu.cardPaymentDemo ? ["counter", "card"] : ["counter"]);
 
 const store = createStore();
+const otpFailures = new Map();
 
 /* A mistake in what the customer sent (shown to them, HTTP 400). */
 class UserError extends Error {}
@@ -310,15 +311,20 @@ app.post("/api/driver/orders/:id/handover", requireDriver, wrap(async (req, res)
   if (!/^\d{6}$/.test(code)) throw new UserError("Enter the 6-digit handover code.");
   const order = await store.getOrder(String(req.params.id).toUpperCase());
   if (!order || order.type !== "delivery") return res.status(404).json({error:"Delivery order not found."});
+  const failKey = req.ip + ":" + order.id;
+  const attempt = otpFailures.get(failKey) || {count:0,until:0};
+  if (attempt.until > Date.now()) throw new UserError("Too many incorrect codes. Try again in 5 minutes.");
   if (action === "pickup") {
     if (order.status !== "out_for_delivery") throw new UserError("This order is not waiting for pickup.");
-    if (!order.pickupOtp || code !== order.pickupOtp) throw new UserError("Pickup code is incorrect.");
+    if (!order.pickupOtp || code !== order.pickupOtp) { attempt.count++; if (attempt.count >= 8) attempt.until = Date.now() + 5 * 60 * 1000; otpFailures.set(failKey, attempt); throw new UserError("Pickup code is incorrect."); }
+    otpFailures.delete(failKey);
     const updated = await store.setStatus(order.id, "picked_up", new Date().toISOString(), {pickupVerified:true, pickupOtp:null});
     return res.json({order:{id:updated.id,status:updated.status}});
   }
   if (action === "delivered") {
     if (order.status !== "picked_up") throw new UserError("Confirm pickup before delivery.");
-    if (!order.deliveryOtp || code !== order.deliveryOtp) throw new UserError("Customer delivery code is incorrect.");
+    if (!order.deliveryOtp || code !== order.deliveryOtp) { attempt.count++; if (attempt.count >= 8) attempt.until = Date.now() + 5 * 60 * 1000; otpFailures.set(failKey, attempt); throw new UserError("Customer delivery code is incorrect."); }
+    otpFailures.delete(failKey);
     const updated = await store.setStatus(order.id, "completed", new Date().toISOString(), {deliveryVerified:true, deliveryOtp:null});
     return res.json({order:{id:updated.id,status:updated.status}});
   }
