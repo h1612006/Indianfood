@@ -28,7 +28,7 @@ const FILTERS = [
 async function api(path, options = {}) {
   const res = await fetch(path, {
     ...options,
-    headers: { "Content-Type": "application/json", "x-admin-password": password, ...(options.headers || {}) },
+    headers: { "Content-Type": "application/json", "x-admin-password": password, "Authorization": localStorage.getItem("ss_chef_token") ? "Bearer " + localStorage.getItem("ss_chef_token") : "", ...(options.headers || {}) },
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401) throw Object.assign(new Error(data.error || "Unauthorized"), { auth: true });
@@ -267,17 +267,25 @@ async function boot() {
     /* keep default */
   }
 
-  $("#loginForm").addEventListener("submit", (e) => {
+  $("#loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    password = $("#pw").value;
-    sessionStorage.setItem("ss_admin", password);
-    firstLoad = true;
-    load();
-    // If the password was wrong, load() sends us back to the login form with a message.
+    const email=$("#staffEmail").value.trim();
+    password=$("#pw").value;
+    if(email){
+      try{
+        const r=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password})});
+        const d=await r.json();
+        if(!r.ok) throw new Error(d.error||"Login failed.");
+        if(d.user.role!=="chef") throw new Error("This account is not an approved chef account.");
+        localStorage.setItem("ss_chef_token",d.token); password="";
+      }catch(ex){showLogin(ex.message);return;}
+    }else{sessionStorage.setItem("ss_admin",password);}
+    firstLoad=true;load();
   });
 
   $("#logout").addEventListener("click", () => {
     sessionStorage.removeItem("ss_admin");
+    localStorage.removeItem("ss_chef_token");
     password = "";
     $("#pw").value = "";
     showLogin();
