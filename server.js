@@ -304,6 +304,7 @@ function requireKitchen(req,res,next) {
 }
 function requireChef(req,res,next) {
   if (req.user && req.user.role === "chef" && req.user.approved) return next();
+  if (!req.user) return res.status(401).json({error:"Sign in with an approved kitchen staff account."});
   return res.status(403).json({error:"Only approved kitchen staff can accept and update orders."});
 }
 function requireSuperAdmin(req,res,next) {
