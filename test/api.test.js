@@ -270,7 +270,9 @@ test("customers can register and staff need admin approval", async () => {
   const customerData=await customerReg.json();
   assert.equal(customerData.verificationRequired,true);
   const customerVerified=await json("POST","/api/auth/verify-email",{email:"customer-profile@example.com",code:customerData.testCode});
-  assert.ok((await customerVerified.json()).token);
+  const customerVerifiedData=await customerVerified.json();
+  assert.ok(customerVerifiedData.token);
+  assert.equal((await json("POST","/api/auth/verify-email",{email:"customer-profile@example.com",code:customerData.testCode})).status,400);
   assert.equal(customerData.user.role,"customer");
   const staffReg=await json("POST","/api/auth/register",{name:"New Driver",email:"new-driver@example.com",phone:"+34 600 333 444",password:"driver-password-123",role:"driver"});
   assert.equal(staffReg.status,201);
