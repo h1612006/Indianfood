@@ -7,7 +7,7 @@ const crypto = require("crypto");
 const { createStore } = require("./db");
 
 const PORT = process.env.PORT || 3000;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 // MENU_FILE lets tests (or a second shop) use a different menu; normally it is data/menu.json.
 const menu = JSON.parse(
@@ -226,7 +226,7 @@ app.get(
 
 function requireAdmin(req, res, next) {
   const given = Buffer.from(String(req.get("x-admin-password") || ""));
-  const real = Buffer.from(ADMIN_PASSWORD);
+  const real = Buffer.from(ADMIN_PASSWORD || "");
   const ok = given.length === real.length && crypto.timingSafeEqual(given, real);
   if (!ok) return res.status(401).json({ error: "Wrong admin password." });
   next();
@@ -279,15 +279,15 @@ app.use((err, _req, res, _next) => {
 /* ---------- start ---------- */
 
 async function main() {
+  if (!ADMIN_PASSWORD || ADMIN_PASSWORD.length < 12) {
+    throw new Error("Set ADMIN_PASSWORD to a strong password of at least 12 characters before starting the app.");
+  }
   await store.init();
   console.log("Order storage:", store.kind);
 
   const server = app.listen(PORT, () => {
     console.log(`${menu.brand} running on http://localhost:${PORT}`);
     console.log(`Kitchen screen: http://localhost:${PORT}/admin.html`);
-    if (!process.env.ADMIN_PASSWORD) {
-      console.log('Using default admin password "admin123" - set ADMIN_PASSWORD before going live.');
-    }
     if (!store.persistent) {
       console.log("Orders are kept in a local file. Set DATABASE_URL (or use Docker) to use Postgres.");
     }
