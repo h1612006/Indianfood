@@ -301,8 +301,8 @@ test("admin can create and remove customer and staff accounts", async () => {
   const createdUser=createdData.user;
   assert.match(createdUser.staffId,/^KCH-[A-F0-9]{6}$/);
   assert.equal(createdUser.approved,true);
-  assert.equal(createdUser.emailVerified,false);
-  assert.ok(createdData.testCode);
+  assert.equal(createdUser.emailVerified,true);
+  assert.equal(createdData.testCode,undefined);
   assert.equal("passwordHash" in createdUser,false);
   assert.equal("passwordSalt" in createdUser,false);
   assert.equal("emailOtpHash" in createdUser,false);
