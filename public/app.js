@@ -515,10 +515,10 @@ function headline(order) {
   return {
     received: "We've got your order!",
     preparing: "Your food is on the grill 🔥",
-    ready: d ? "Your order is on its way 🛵" : "Ready for pickup! 🎉",
+    ready: d ? "Your order is on its way 🛵" : order.type === "eat_here" ? "Your table order is ready! 🎉" : "Ready for pickup! 🎉",
     out_for_delivery: "Your order is on its way 🛵",
     picked_up: "Your driver has your order 🛵",
-    completed: d ? "Delivered — enjoy! 😋" : "Picked up — enjoy! 😋",
+    completed: d ? "Delivered — enjoy! 😋" : order.type === "eat_here" ? "Served — enjoy! 😋" : "Picked up — enjoy! 😋",
     cancelled: "This order was cancelled",
   }[order.status];
 }
