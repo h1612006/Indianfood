@@ -301,7 +301,7 @@ async function boot() {
       try{
         const r=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password})});
         const d=await r.json();
-        if(!r.ok) throw new Error(d.error||"Login failed.");
+        if(!r.ok) throw new Error((d.error||"Login failed.")+(d.verificationRequired?" Open the main account page (/profile.html) to enter your email code.":""));
         if(d.user.role!=="chef") throw new Error("This account is not an approved kitchen staff account.");
         localStorage.setItem("ss_chef_token",d.token); password="";
       }catch(ex){showLogin(ex.message);return;}
