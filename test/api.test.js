@@ -303,11 +303,11 @@ test("admin can create and remove customer and staff accounts", async () => {
   const adminSession={Authorization:"Bearer "+adminToken};
   const created=await json("POST","/api/admin/users",{name:"Managed Kitchen",email:"managed-kitchen@example.com",phone:"+34 600 555 111",password:"managed-kitchen-password",role:"chef"},adminSession);
   assert.equal(created.status,201);
-  const createdUser=(await created.json()).user;
+  const createdData=await created.json();
+  const createdUser=createdData.user;
   assert.match(createdUser.staffId,/^KCH-[A-F0-9]{6}$/);
   assert.equal(createdUser.approved,true);
   assert.equal(createdUser.emailVerified,false);
-  const createdData=await created.json();
   assert.ok(createdData.testCode);
   assert.equal("passwordHash" in createdUser,false);
   assert.equal("passwordSalt" in createdUser,false);
