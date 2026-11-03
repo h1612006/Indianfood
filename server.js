@@ -427,7 +427,7 @@ app.get("/api/driver/orders", requireDriver, wrap(async (_req, res) => {
   // the manager moves an order to out_for_delivery.
   const driverId = (_req.driver && _req.driver.email) || "legacy-driver";
   const orders = (await store.listOrders())
-    .filter(o => o.type === "delivery" && ["received", "preparing", "ready", "out_for_delivery", "picked_up"].includes(o.status) && (!o.driverAcceptedBy || o.driverAcceptedBy === driverId) && o.driverRejectedBy !== driverId)
+    .filter(o => o.type === "delivery" && ["received", "preparing", "ready", "out_for_delivery", "picked_up"].includes(o.status) && (!o.driverAcceptedBy || o.driverAcceptedBy === driverId) && !(Array.isArray(o.driverRejectedBy) ? o.driverRejectedBy.includes(driverId) : o.driverRejectedBy === driverId))
     .map(o => ({
       id: o.id,
       status: o.status,
@@ -448,13 +448,15 @@ app.post("/api/driver/orders/:id/decision", requireDriver, wrap(async (req,res) 
   const id=String(req.params.id).toUpperCase(), order=await store.getOrder(id);
   if(!order||order.type!=="delivery"||!["received","preparing","ready"].includes(order.status)) return res.status(404).json({error:"This delivery is no longer available."});
   const driver=(req.driver && req.driver.email) || "legacy-driver";
+  const rejectedBy=Array.isArray(order.driverRejectedBy)?order.driverRejectedBy:(order.driverRejectedBy?[order.driverRejectedBy]:[]);
   if(decision==="accept") {
+    if(rejectedBy.includes(driver)) throw new UserError("You already rejected this delivery.");
     if(order.driverAcceptedBy&&order.driverAcceptedBy!==driver) throw new UserError("Another driver has already accepted this order.");
     const claimed=await store.claimOrder(id,driver,new Date().toISOString());
     if(!claimed) throw new UserError("Another driver has already accepted this order.");
   } else {
     if(order.driverAcceptedBy&&order.driverAcceptedBy!==driver) throw new UserError("This order has already been accepted by another driver.");
-    await store.setStatus(id,order.status,new Date().toISOString(),{driverAcceptedBy:null,driverDecision:"rejected",driverRejectedBy:driver,driverRejectedAt:new Date().toISOString()});
+    await store.setStatus(id,order.status,new Date().toISOString(),{driverAcceptedBy:null,driverDecision:"rejected",driverRejectedBy:[...rejectedBy,driver],driverRejectedAt:new Date().toISOString()});
   }
   res.json({ok:true,decision});
 }));
