@@ -297,8 +297,8 @@ test("driver pickup and customer delivery OTPs are verified separately", async (
   assert.equal(sent.status,200);
   const adminOrders=(await (await json("GET","/api/admin/orders",undefined,admin)).json()).orders;
   const managed=adminOrders.find(o=>o.id===id);
-  assert.match(managed.pickupOtp,/^\\d{6}$/);
-  assert.match(managed.deliveryOtp,/^\\d{6}$/);
+  assert.match(managed.pickupOtp,/^\d{6}$/);
+  assert.match(managed.deliveryOtp,/^\d{6}$/);
 
   const driverHeaders={"x-driver-password":DRIVER};
   const jobs=await (await json("GET","/api/driver/orders",undefined,driverHeaders)).json();
