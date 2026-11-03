@@ -307,6 +307,7 @@ function requireChef(req,res,next) {
   return res.status(403).json({error:"Only approved kitchen staff can accept and update orders."});
 }
 function requireSuperAdmin(req,res,next) {
+  if(req.user && req.user.role==="admin" && req.user.approved) return next();
   const given=Buffer.from(String(req.get("x-admin-password")||""));
   const real=Buffer.from(ADMIN_PASSWORD||"");
   const ok=given.length===real.length&&crypto.timingSafeEqual(given,real);
