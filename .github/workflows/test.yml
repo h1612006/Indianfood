@@ -1,9 +1,9 @@
-name: Test ordering system
+name: Test ordering system # run on all active feature changes
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, "feature/**"]
 
 jobs:
   test:

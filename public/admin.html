@@ -77,7 +77,8 @@
   <div id="loginBox" class="login" hidden>
     <h2>Staff login</h2>
     <form id="loginForm">
-      <input type="password" id="pw" placeholder="Admin password" autocomplete="current-password" required>
+      <input type="email" id="staffEmail" placeholder="Approved chef email (optional)" autocomplete="username">
+      <input type="password" id="pw" placeholder="Password" autocomplete="current-password" required>
       <p class="a-error" id="loginErr" hidden></p>
       <button class="btn primary block" type="submit">Open kitchen screen</button>
     </form>
@@ -119,6 +120,11 @@
         </form>
         <p id="menuFormError" class="a-error" hidden></p>
       </section>
+    </section>
+    <section class="stock-panel" id="staffApprovals">
+      <h2>Staff profile applications</h2>
+      <p>Approve or reject chef and driver registrations. Staff cannot access their work pages until approved.</p>
+      <div id="staffApplications" class="menu-list">Loading applications…</div>
     </section>
   </main>
 

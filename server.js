@@ -24,6 +24,7 @@ const PAYMENTS = menu.payments || (menu.cardPaymentDemo ? ["counter", "card"] : 
 
 const store = createStore();
 const otpFailures = new Map();
+const sessions = new Map();
 
 /* A mistake in what the customer sent (shown to them, HTTP 400). */
 class UserError extends Error {}
@@ -153,7 +154,7 @@ function buildOrder(body) {
 }
 
 // Customers only see what they need to track their own order.
-function publicOrder(o) {
+function publicOrder(o, user = null) {
   return {
     id: o.id,
     type: o.type,
@@ -167,6 +168,7 @@ function publicOrder(o) {
     paymentReceived: !!o.paymentReceived,
     createdAt: o.createdAt,
     updatedAt: o.updatedAt,
+    ...(user && user.role === "customer" && o.customerEmail === user.email && o.deliveryOtp ? { deliveryOtp: o.deliveryOtp } : {}),
   };
 }
 
@@ -176,6 +178,7 @@ const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "50kb" }));
 app.use(express.static(path.join(__dirname, "public")));
+app.use((req,res,next)=>{const token=String(req.get("authorization")||"").replace(/^Bearer /,"");req.user=sessions.get(token)||null;next();});
 
 // Express 4 does not catch errors from async handlers, so wrap them.
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -199,11 +202,14 @@ app.get("/api/menu", wrap(async (_req, res) => res.json({ ...menu, stock: await 
 app.post(
   "/api/orders",
   wrap(async (req, res) => {
+    if (!req.user || req.user.role !== "customer" || !req.user.approved) throw new UserError("Create a customer account and sign in before ordering.");
     const stock = await store.listStock();
     for (const line of (req.body && Array.isArray(req.body.items) ? req.body.items : [])) {
       if (stock[line && line.itemId] === false) throw new UserError("Out of stock.");
     }
     const order = buildOrder(req.body); // throws UserError on bad input
+    if (req.user && req.user.role === "customer" && req.user.approved) order.customerEmail = req.user.email;
+    if (req.user && (req.user.role !== "customer" || !req.user.approved)) throw new UserError("Use a customer account to place this order.");
 
     for (let attempt = 0; ; attempt++) {
       order.id = newOrderId();
@@ -224,19 +230,83 @@ app.get(
   wrap(async (req, res) => {
     const order = await store.getOrder(String(req.params.id).toUpperCase());
     if (!order) return res.status(404).json({ error: "Order not found." });
-    res.json({ order: publicOrder(order) });
+    res.json({ order: publicOrder(order, req.user) });
   })
 );
+
+
+/* ---------- customer and staff accounts ---------- */
+app.post("/api/auth/register", wrap(async (req,res) => {
+  const email = clean(req.body.email,160).toLowerCase();
+  const name = clean(req.body.name,80);
+  const phone = clean(req.body.phone,30);
+  const address = clean(req.body.address,200);
+  const password = String(req.body.password || "");
+  const role = req.body.role || "customer";
+  if (!email.includes("@") || !name || password.length < 10) throw new UserError("Enter a valid email, your name and a password of at least 10 characters.");
+  if (!["customer","chef","driver"].includes(role)) throw new UserError("Choose customer, chef or driver.");
+  const salt = crypto.randomBytes(16).toString("hex");
+  const user = {email,name,phone,address,role,approved:role==="customer",status:role==="customer"?"approved":"pending",passwordSalt:salt,passwordHash:crypto.scryptSync(password,salt,64).toString("hex"),createdAt:new Date().toISOString()};
+  try { await store.saveUser(user); } catch(e) { if(e.code==="USER_EXISTS") throw new UserError("An account with this email already exists."); throw e; }
+  if(role!=="customer") return res.status(201).json({message:"Staff application sent for admin approval.",status:"pending"});
+  const token=crypto.randomBytes(32).toString("hex"); sessions.set(token,{email,name,phone,address,role,approved:true});
+  res.status(201).json({token,user:{email,name,phone,address,role,approved:true}});
+}));
+app.post("/api/auth/login", wrap(async (req,res) => {
+  const email=clean(req.body.email,160).toLowerCase(), password=String(req.body.password||"");
+  const user=await store.getUser(email);
+  const hash=user?crypto.scryptSync(password,user.passwordSalt,64).toString("hex"):"";
+  if(!user || hash!==user.passwordHash) return res.status(401).json({error:"Email or password is incorrect."});
+  if(!user.approved) return res.status(403).json({error:"Your staff account is awaiting admin approval."});
+  const token=crypto.randomBytes(32).toString("hex");
+  const safe={email:user.email,name:user.name,phone:user.phone,address:user.address||"",role:user.role,approved:user.approved};
+  sessions.set(token,safe); res.json({token,user:safe});
+}));
+
+app.patch("/api/auth/profile", wrap(async (req,res) => {
+  if(!req.user) return res.status(401).json({error:"Please sign in."});
+  const name=clean(req.body.name,80), phone=clean(req.body.phone,30), address=clean(req.body.address,200);
+  if(!name) throw new UserError("Enter your name.");
+  const updated=await store.updateUser(req.user.email,{name,phone,address});
+  const safe={email:updated.email,name:updated.name,phone:updated.phone,address:updated.address||"",role:updated.role,approved:updated.approved};
+  for(const [key,value] of sessions) if(value.email===updated.email) sessions.set(key,safe);
+  res.json({user:safe});
+}));
+
+app.get("/api/auth/me", (req,res) => req.user ? res.json({user:req.user}) : res.status(401).json({error:"Please sign in."}));
+app.post("/api/auth/logout", (req,res) => { sessions.delete(String(req.get("authorization")||"").replace(/^Bearer /,"")); res.json({ok:true}); });
 
 /* ---------- admin ---------- */
 
 function requireAdmin(req, res, next) {
+  if (req.user && req.user.role === "chef" && req.user.approved) return next();
   const given = Buffer.from(String(req.get("x-admin-password") || ""));
   const real = Buffer.from(ADMIN_PASSWORD || "");
   const ok = given.length === real.length && crypto.timingSafeEqual(given, real);
-  if (!ok) return res.status(401).json({ error: "Wrong admin password." });
+  if (!ok) return res.status(401).json({ error: "Use an approved chef account or the admin password." });
   next();
 }
+function requireSuperAdmin(req,res,next) {
+  const given=Buffer.from(String(req.get("x-admin-password")||""));
+  const real=Buffer.from(ADMIN_PASSWORD||"");
+  const ok=given.length===real.length&&crypto.timingSafeEqual(given,real);
+  if(!ok) return res.status(401).json({error:"Only the admin can approve staff applications."});
+  next();
+}
+
+
+app.get("/api/admin/staff-applications", requireSuperAdmin, wrap(async (_req,res) => {
+  const applications=(await store.listUsers()).filter(u=>["chef","driver"].includes(u.role)&&!u.approved).map(({passwordHash,passwordSalt,...u})=>u);
+  res.json({applications});
+}));
+app.patch("/api/admin/staff-applications/:email", requireSuperAdmin, wrap(async (req,res) => {
+  const email=decodeURIComponent(req.params.email).toLowerCase(), approved=req.body&&req.body.approved;
+  if(typeof approved!=="boolean") throw new UserError("Choose approve or reject.");
+  const user=await store.getUser(email);
+  if(!user||!["chef","driver"].includes(user.role)) return res.status(404).json({error:"Staff application not found."});
+  const updated=await store.updateUser(email,{approved,status:approved?"approved":"rejected",reviewedAt:new Date().toISOString()});
+  const {passwordHash,passwordSalt,...safe}=updated; res.json({user:safe});
+}));
 
 app.get(
   "/api/admin/orders",
@@ -322,6 +392,7 @@ app.patch(
     if (status === "out_for_delivery") {
       const existing = await store.getOrder(req.params.id);
       if (!existing || existing.type !== "delivery") throw new UserError("Only delivery orders can be sent out.");
+      if (!existing.driverAcceptedBy) throw new UserError("A driver must accept this delivery before dispatch.");
       extra.pickupOtp = String(crypto.randomInt(100000, 1000000));
       extra.deliveryOtp = String(crypto.randomInt(100000, 1000000));
       extra.pickupVerified = false;
@@ -342,6 +413,7 @@ app.patch("/api/admin/orders/:id/payment", requireAdmin, wrap(async (req, res) =
 }));
 
 function requireDriver(req, res, next) {
+  if (req.user && req.user.role === "driver" && req.user.approved) { req.driver = req.user; return next(); }
   const given = Buffer.from(String(req.get("x-driver-password") || ""));
   const real = Buffer.from(DRIVER_PASSWORD || "");
   const ok = real.length >= 12 && given.length === real.length && crypto.timingSafeEqual(given, real);
@@ -353,11 +425,14 @@ app.get("/api/driver/orders", requireDriver, wrap(async (_req, res) => {
   // Show active delivery jobs to drivers as soon as they are placed, not only
   // after the kitchen dispatches them. OTP actions remain available only after
   // the manager moves an order to out_for_delivery.
+  const driverId = (_req.driver && _req.driver.email) || "legacy-driver";
   const orders = (await store.listOrders())
-    .filter(o => o.type === "delivery" && ["received", "preparing", "ready", "out_for_delivery", "picked_up"].includes(o.status))
+    .filter(o => o.type === "delivery" && ["received", "preparing", "ready", "out_for_delivery", "picked_up"].includes(o.status) && (!o.driverAcceptedBy || o.driverAcceptedBy === driverId) && !(Array.isArray(o.driverRejectedBy) ? o.driverRejectedBy.includes(driverId) : o.driverRejectedBy === driverId))
     .map(o => ({
       id: o.id,
       status: o.status,
+      driverDecision: o.driverDecision || "open",
+      acceptedByMe: !!o.driverAcceptedBy && o.driverAcceptedBy === driverId,
       customer: { name: o.customer.name, address: o.customer.address, phone: o.customer.phone },
       items: o.items,
       total: o.total,
@@ -366,12 +441,33 @@ app.get("/api/driver/orders", requireDriver, wrap(async (_req, res) => {
   res.json({orders});
 }));
 
+
+app.post("/api/driver/orders/:id/decision", requireDriver, wrap(async (req,res) => {
+  const decision=req.body&&req.body.decision;
+  if(!["accept","reject"].includes(decision)) throw new UserError("Choose accept or reject.");
+  const id=String(req.params.id).toUpperCase(), order=await store.getOrder(id);
+  if(!order||order.type!=="delivery"||!["received","preparing","ready"].includes(order.status)) return res.status(404).json({error:"This delivery is no longer available."});
+  const driver=(req.driver && req.driver.email) || "legacy-driver";
+  const rejectedBy=Array.isArray(order.driverRejectedBy)?order.driverRejectedBy:(order.driverRejectedBy?[order.driverRejectedBy]:[]);
+  if(decision==="accept") {
+    if(rejectedBy.includes(driver)) throw new UserError("You already rejected this delivery.");
+    if(order.driverAcceptedBy&&order.driverAcceptedBy!==driver) throw new UserError("Another driver has already accepted this order.");
+    const claimed=await store.claimOrder(id,driver,new Date().toISOString());
+    if(!claimed) throw new UserError("Another driver has already accepted this order.");
+  } else {
+    if(order.driverAcceptedBy&&order.driverAcceptedBy!==driver) throw new UserError("This order has already been accepted by another driver.");
+    await store.setStatus(id,order.status,new Date().toISOString(),{driverAcceptedBy:null,driverDecision:"rejected",driverRejectedBy:[...rejectedBy,driver],driverRejectedAt:new Date().toISOString()});
+  }
+  res.json({ok:true,decision});
+}));
+
 app.post("/api/driver/orders/:id/handover", requireDriver, wrap(async (req, res) => {
   const action = req.body && req.body.action;
   const code = String(req.body && req.body.otp || "").trim();
   if (!/^\d{6}$/.test(code)) throw new UserError("Enter the 6-digit handover code.");
   const order = await store.getOrder(String(req.params.id).toUpperCase());
   if (!order || order.type !== "delivery") return res.status(404).json({error:"Delivery order not found."});
+  if (order.driverAcceptedBy && order.driverAcceptedBy !== ((req.driver && req.driver.email) || "legacy-driver")) throw new UserError("This delivery is assigned to another driver.");
   const failKey = req.ip + ":" + order.id;
   const attempt = otpFailures.get(failKey) || {count:0,until:0};
   if (attempt.until > Date.now()) throw new UserError("Too many incorrect codes. Try again in 5 minutes.");

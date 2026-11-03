@@ -15,6 +15,7 @@ let menuItems = [];
 let stock = {};
 let menuCategories = [];
 let editingMenuId = null;
+let staffApplications = [];
 
 const ACTIVE = ["received", "preparing", "ready", "out_for_delivery", "picked_up"];
 
@@ -27,7 +28,7 @@ const FILTERS = [
 async function api(path, options = {}) {
   const res = await fetch(path, {
     ...options,
-    headers: { "Content-Type": "application/json", "x-admin-password": password, ...(options.headers || {}) },
+    headers: { "Content-Type": "application/json", "x-admin-password": password, "Authorization": localStorage.getItem("ss_chef_token") ? "Bearer " + localStorage.getItem("ss_chef_token") : "", ...(options.headers || {}) },
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401) throw Object.assign(new Error(data.error || "Unauthorized"), { auth: true });
@@ -59,6 +60,7 @@ async function load() {
     showBoard();
     $("#boardErr").hidden = true;
     try { await loadStock(); } catch (stockError) { $("#stockItems").textContent = "Could not load stock: " + stockError.message; }
+    try { await loadStaffApplications(); } catch (staffError) { $("#staffApplications").textContent = "Could not load applications: " + staffError.message; }
 
     const newOnes = orders.filter((o) => !knownIds.has(o.id));
     if (!firstLoad && newOnes.length) beep();
@@ -135,6 +137,17 @@ async function setStock(id, available, button) {
   catch (ex) { alert(ex.message); button.disabled = false; }
 }
 
+
+async function loadStaffApplications() {
+  const data=await api("/api/admin/staff-applications");
+  staffApplications=data.applications||[];
+  $("#staffApplications").innerHTML=staffApplications.map(u=>`<div class="menu-item-row"><div><strong>${esc(u.name)}</strong><small>${esc(u.email)} · ${esc(u.role)} · Applied ${esc(new Date(u.createdAt).toLocaleDateString())}</small></div><button class="btn primary" data-staff-approve="true" data-email="${esc(u.email)}">Approve</button><button class="btn danger" data-staff-approve="false" data-email="${esc(u.email)}">Reject</button></div>`).join("")||'<p class="empty-a">No pending staff applications.</p>';
+}
+async function reviewStaff(email, approved) {
+  try { await api("/api/admin/staff-applications/"+encodeURIComponent(email),{method:"PATCH",body:JSON.stringify({approved})}); await loadStaffApplications(); }
+  catch(ex) { alert(ex.message); }
+}
+
 function beep() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -206,7 +219,7 @@ function render() {
         </div>
         <div class="o-cust">
           <strong>${esc(o.customer.name)}</strong> · ${esc(o.customer.phone)}
-          ${o.type === "delivery" ? `<br>📍 ${esc(o.customer.address)}` : ""}
+          ${o.type === "delivery" ? `<br>📍 ${esc(o.customer.address)}<br>🚚 Driver: ${esc(o.driverAcceptedBy || "Awaiting acceptance")}` : ""}
         </div>
         <div class="o-items">
           ${o.items
@@ -254,17 +267,25 @@ async function boot() {
     /* keep default */
   }
 
-  $("#loginForm").addEventListener("submit", (e) => {
+  $("#loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    password = $("#pw").value;
-    sessionStorage.setItem("ss_admin", password);
-    firstLoad = true;
-    load();
-    // If the password was wrong, load() sends us back to the login form with a message.
+    const email=$("#staffEmail").value.trim();
+    password=$("#pw").value;
+    if(email){
+      try{
+        const r=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password})});
+        const d=await r.json();
+        if(!r.ok) throw new Error(d.error||"Login failed.");
+        if(d.user.role!=="chef") throw new Error("This account is not an approved chef account.");
+        localStorage.setItem("ss_chef_token",d.token); password="";
+      }catch(ex){showLogin(ex.message);return;}
+    }else{sessionStorage.setItem("ss_admin",password);}
+    firstLoad=true;load();
   });
 
   $("#logout").addEventListener("click", () => {
     sessionStorage.removeItem("ss_admin");
+    localStorage.removeItem("ss_chef_token");
     password = "";
     $("#pw").value = "";
     showLogin();
@@ -277,6 +298,8 @@ async function boot() {
       render();
     }
   });
+
+  $("#staffApplications").addEventListener("click", e => { const b=e.target.closest("[data-staff-approve]"); if(b) reviewStaff(b.dataset.email,b.dataset.staffApprove==="true"); });
 
   $("#stockItems").addEventListener("click", (e) => {
     const b = e.target.closest("[data-stock]");

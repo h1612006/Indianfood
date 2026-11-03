@@ -22,6 +22,7 @@ const DRIVER = "test-driver-password-123";
 let child;
 let base;
 let tmpDir;
+let defaultCustomerToken;
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -72,6 +73,8 @@ before(async () => {
     if (code) console.error("Server exited early:\n" + log);
   });
   await waitForHealth(base);
+  const customerRegistration = await fetch(base + "/api/auth/register", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Default Test Customer",email:"default-customer@example.com",phone:"+34 600 000 000",password:"default-customer-password",role:"customer"})});
+  defaultCustomerToken = (await customerRegistration.json()).token;
   console.log("Testing against:", /Order storage: (.*)/.exec(log)?.[1] || "unknown storage");
 });
 
@@ -88,7 +91,7 @@ after(async () => {
 const json = (method, url, body, headers = {}) =>
   fetch(base + url, {
     method,
-    headers: { "Content-Type": "application/json", ...headers },
+    headers: { "Content-Type": "application/json", ...(defaultCustomerToken ? {"Authorization":"Bearer "+defaultCustomerToken} : {}), ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
@@ -246,6 +249,25 @@ test("20 simultaneous orders all succeed with unique ids", async () => {
   assert.equal(new Set(ids).size, 20);
 });
 
+
+test("customers can register and staff need admin approval", async () => {
+  const customerReg=await json("POST","/api/auth/register",{name:"Profile Customer",email:"customer-profile@example.com",phone:"+34 600 222 333",password:"customer-password-123",role:"customer"});
+  assert.equal(customerReg.status,201);
+  const customerData=await customerReg.json();
+  assert.ok(customerData.token);
+  assert.equal(customerData.user.role,"customer");
+  const staffReg=await json("POST","/api/auth/register",{name:"New Driver",email:"new-driver@example.com",phone:"+34 600 333 444",password:"driver-password-123",role:"driver"});
+  assert.equal(staffReg.status,201);
+  assert.equal((await json("POST","/api/auth/login",{email:"new-driver@example.com",password:"driver-password-123"})).status,403);
+  const pending=await json("GET","/api/admin/staff-applications",undefined,admin);
+  assert.ok((await pending.json()).applications.some(u=>u.email==="new-driver@example.com"));
+  const approved=await json("PATCH","/api/admin/staff-applications/new-driver%40example.com",{approved:true},admin);
+  assert.equal(approved.status,200);
+  const login=await json("POST","/api/auth/login",{email:"new-driver@example.com",password:"driver-password-123"});
+  assert.equal(login.status,200);
+  assert.equal((await login.json()).user.role,"driver");
+});
+
 test("unknown API routes return JSON 404", async () => {
   const res = await fetch(base + "/api/does-not-exist");
   assert.equal(res.status, 404);
@@ -322,8 +344,11 @@ test("admin can mark payment received or not received", async () => {
 });
 
 test("driver pickup and customer delivery OTPs are verified separately", async () => {
+  const registration=await json("POST","/api/auth/register",{name:"Delivery Customer",email:"delivery-customer@example.com",phone:customer.phone,password:"customer-password-123",role:"customer"});
+  const customerSession=await registration.json();
   const delivery={type:"delivery",customer:{...customer,address:"Calle Mayor 1"},items:[{itemId:"classic-smash",qty:3}]};
-  const placed=await placeOrder(delivery);
+  const placedRes=await fetch(base+"/api/orders",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+customerSession.token},body:JSON.stringify(delivery)});
+  const placed={res:placedRes,data:await placedRes.json()};
   const id=placed.data.order.id;
   assert.equal(placed.res.status,201);
   await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},admin);
@@ -337,12 +362,18 @@ test("driver pickup and customer delivery OTPs are verified separately", async (
   assert.equal("deliveryOtp" in preparingJob,false);
   assert.equal((await json("POST","/api/driver/orders/"+id+"/handover",{action:"pickup",otp:"123456"},driverHeaders)).status,400);
 
+  const accepted=await json("POST","/api/driver/orders/"+id+"/decision",{decision:"accept"},driverHeaders);
+  assert.equal(accepted.status,200);
   const sent=await json("PATCH","/api/admin/orders/"+id,{status:"out_for_delivery"},admin);
   assert.equal(sent.status,200);
   const adminOrders=(await (await json("GET","/api/admin/orders",undefined,admin)).json()).orders;
   const managed=adminOrders.find(o=>o.id===id);
   assert.match(managed.pickupOtp,/^\d{6}$/);
   assert.match(managed.deliveryOtp,/^\d{6}$/);
+  const customerView=await (await fetch(base+"/api/orders/"+id,{headers:{"Authorization":"Bearer "+customerSession.token}})).json();
+  assert.equal(customerView.order.deliveryOtp,managed.deliveryOtp,"customer account sees its delivery OTP");
+  const publicView=await (await fetch(base+"/api/orders/"+id)).json();
+  assert.equal("deliveryOtp" in publicView.order,false,"public tracking never reveals the OTP");
 
   const jobs=await (await json("GET","/api/driver/orders",undefined,driverHeaders)).json();
   const job=jobs.orders.find(o=>o.id===id);
