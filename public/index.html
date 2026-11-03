@@ -96,8 +96,9 @@
         </label>
         <fieldset>
           <legend>Payment</legend>
-          <label class="radio"><input type="radio" name="payment" value="counter" checked> <span id="payCounterLabel">Pay at the counter</span></label>
-          <label class="radio"><input type="radio" name="payment" value="card"> Card <span class="muted">(demo — nothing is charged)</span></label>
+          <label class="radio"><input type="radio" name="payment" value="cash" checked> Cash</label>
+          <label class="radio"><input type="radio" name="payment" value="card"> Card <span class="muted">(payment choice only; no online charge is processed)</span></label>
+          <label class="radio"><input type="radio" name="payment" value="bizum"> Bizum</label>
         </fieldset>
         <div class="summary" id="checkoutSummary"></div>
         <p class="error" id="checkoutError" role="alert" hidden></p>
