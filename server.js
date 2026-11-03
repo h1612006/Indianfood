@@ -39,20 +39,32 @@ function otpHash(email, code) {
   return crypto.createHash("sha256").update(email.toLowerCase() + ":" + code + ":" + (process.env.OTP_PEPPER || ADMIN_PASSWORD || "spice-smash-email-otp")).digest("hex");
 }
 async function sendVerificationEmail(email, code) {
+  const from = process.env.EMAIL_FROM;
+  const html = "<div style='font-family:Arial,sans-serif;max-width:520px;margin:auto'><h2>Verify your Spice Smash email</h2><p>Enter this one-time code to verify your email address:</p><p style='font-size:30px;font-weight:bold;letter-spacing:8px'>" + code + "</p><p>This code expires in 10 minutes and can only be used once. If you did not request this, you can ignore this email.</p></div>";
   if (process.env.EMAIL_TEST_MODE === "true" && process.env.NODE_ENV !== "production") return;
-  const apiKey = process.env.RESEND_API_KEY, from = process.env.EMAIL_FROM;
-  if (!apiKey || !from) throw new Error("Email verification is not configured. Set RESEND_API_KEY and EMAIL_FROM in Render.");
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from, to: [email], subject: "Your Spice Smash verification code",
-      html: "<div style='font-family:Arial,sans-serif;max-width:520px;margin:auto'><h2>Verify your Spice Smash email</h2><p>Enter this one-time code to verify your email address:</p><p style='font-size:30px;font-weight:bold;letter-spacing:8px'>" + code + "</p><p>This code expires in 10 minutes and can only be used once. If you did not request this, you can ignore this email.</p></div>"
-    })
-  });
+  if (!from) throw new Error("Email verification is not configured. Set EMAIL_FROM and a Brevo or Resend API key in Render.");
+  let response;
+  if (process.env.BREVO_API_KEY) {
+    response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { "api-key": process.env.BREVO_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sender: { name: process.env.EMAIL_FROM_NAME || "Spice Smash", email: from },
+        to: [{ email }], subject: "Your Spice Smash verification code", htmlContent: html
+      })
+    });
+  } else if (process.env.RESEND_API_KEY) {
+    response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + process.env.RESEND_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to: [email], subject: "Your Spice Smash verification code", html })
+    });
+  } else {
+    throw new Error("Email verification is not configured. Set EMAIL_FROM and BREVO_API_KEY or RESEND_API_KEY in Render.");
+  }
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error("Could not send verification email. Check the email sender configuration. " + detail.slice(0, 240));
+    throw new Error("Could not send verification email. Check the verified sender and email API key. " + detail.slice(0, 240));
   }
 }
 async function issueEmailOtp(user, { allowResend = false } = {}) {
