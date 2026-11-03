@@ -206,3 +206,15 @@ render.yaml        Optional quick-demo hosting config for Render
 - **One shared admin password.** For several staff members, add proper accounts.
 - **No rate limiting.** Add `express-rate-limit` before exposing it publicly.
 - **Customer accounts, order history, promo codes and email/SMS notifications** are natural next steps.
+
+## Email verification (production)
+
+Customer, kitchen-staff and driver accounts must verify their email address with a six-digit code before signing in. Codes expire after 10 minutes, are single-use, and allow up to five attempts. The server stores only a hash of the code.
+
+Email delivery uses the Resend API. In the Render service environment, set these variables (never commit them to GitHub):
+
+- `RESEND_API_KEY`: an API key from your Resend account.
+- `EMAIL_FROM`: a sender address on a domain verified in Resend, for example `Spice Smash <verify@yourdomain.com>`.
+- `OTP_PEPPER`: a long random secret used to hash verification codes.
+
+The code is delivered to the account's email address, including Gmail addresses. Verify your sending domain and configure its DNS records in Resend before enabling registration. Automated tests set `EMAIL_TEST_MODE=true`; the test-only code is never returned in production.
