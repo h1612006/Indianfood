@@ -327,6 +327,16 @@ test("driver pickup and customer delivery OTPs are verified separately", async (
   const id=placed.data.order.id;
   assert.equal(placed.res.status,201);
   await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},admin);
+
+  const driverHeaders={"x-driver-password":DRIVER};
+  const preparingJobs=await (await json("GET","/api/driver/orders",undefined,driverHeaders)).json();
+  const preparingJob=preparingJobs.orders.find(o=>o.id===id);
+  assert.ok(preparingJob, "driver can see delivery orders while they are being prepared");
+  assert.equal(preparingJob.status,"preparing");
+  assert.equal("pickupOtp" in preparingJob,false);
+  assert.equal("deliveryOtp" in preparingJob,false);
+  assert.equal((await json("POST","/api/driver/orders/"+id+"/handover",{action:"pickup",otp:"123456"},driverHeaders)).status,400);
+
   const sent=await json("PATCH","/api/admin/orders/"+id,{status:"out_for_delivery"},admin);
   assert.equal(sent.status,200);
   const adminOrders=(await (await json("GET","/api/admin/orders",undefined,admin)).json()).orders;
@@ -334,7 +344,6 @@ test("driver pickup and customer delivery OTPs are verified separately", async (
   assert.match(managed.pickupOtp,/^\d{6}$/);
   assert.match(managed.deliveryOtp,/^\d{6}$/);
 
-  const driverHeaders={"x-driver-password":DRIVER};
   const jobs=await (await json("GET","/api/driver/orders",undefined,driverHeaders)).json();
   const job=jobs.orders.find(o=>o.id===id);
   assert.ok(job);
@@ -349,4 +358,6 @@ test("driver pickup and customer delivery OTPs are verified separately", async (
   const delivered=await json("POST","/api/driver/orders/"+id+"/handover",{action:"delivered",otp:managed.deliveryOtp},driverHeaders);
   assert.equal(delivered.status,200);
   assert.equal((await delivered.json()).order.status,"completed");
+  const afterDelivery=await (await json("GET","/api/driver/orders",undefined,driverHeaders)).json();
+  assert.equal(afterDelivery.orders.some(o=>o.id===id),false,"completed deliveries disappear from the active driver list");
 });
