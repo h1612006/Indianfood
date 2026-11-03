@@ -35,59 +35,6 @@ function safeUser(user) {
   const { password, passwordHash, passwordSalt, emailOtpHash, emailOtpExpiresAt, emailOtpAttempts, emailOtpSentAt, ...safe } = user;
   return safe;
 }
-function otpHash(email, code) {
-  return crypto.createHash("sha256").update(email.toLowerCase() + ":" + code + ":" + (process.env.OTP_PEPPER || ADMIN_PASSWORD || "spice-smash-email-otp")).digest("hex");
-}
-async function sendVerificationEmail(email, code) {
-  const from = process.env.EMAIL_FROM;
-  const html = "<div style='font-family:Arial,sans-serif;max-width:520px;margin:auto'><h2>Verify your Spice Smash email</h2><p>Enter this one-time code to verify your email address:</p><p style='font-size:30px;font-weight:bold;letter-spacing:8px'>" + code + "</p><p>This code expires in 10 minutes and can only be used once. If you did not request this, you can ignore this email.</p></div>";
-  if (process.env.EMAIL_TEST_MODE === "true" && process.env.NODE_ENV !== "production") return;
-  if (!from) throw new Error("Email verification is not configured. Set EMAIL_FROM and a Brevo or Resend API key in Render.");
-  let response;
-  if (process.env.BREVO_API_KEY) {
-    response = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: { "api-key": process.env.BREVO_API_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sender: { name: process.env.EMAIL_FROM_NAME || "Spice Smash", email: from },
-        to: [{ email }], subject: "Your Spice Smash verification code", htmlContent: html
-      })
-    });
-  } else if (process.env.RESEND_API_KEY) {
-    response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { "Authorization": "Bearer " + process.env.RESEND_API_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: [email], subject: "Your Spice Smash verification code", html })
-    });
-  } else {
-    throw new Error("Email verification is not configured. Set EMAIL_FROM and BREVO_API_KEY or RESEND_API_KEY in Render.");
-  }
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error("Could not send verification email. Check the verified sender and email API key. " + detail.slice(0, 240));
-  }
-}
-async function issueEmailOtp(user, { allowResend = false } = {}) {
-  const now = Date.now();
-  if (!allowResend && user.emailOtpSentAt && now - Date.parse(user.emailOtpSentAt) < 60000) {
-    throw Object.assign(new UserError("A verification code was sent recently. Check your inbox or wait one minute before requesting another."), { status: 429 });
-  }
-  const code = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
-  const updated = await store.updateUser(user.email, {
-    emailVerified: false,
-    emailOtpHash: otpHash(user.email, code),
-    emailOtpExpiresAt: new Date(now + 10 * 60 * 1000).toISOString(),
-    emailOtpAttempts: 0,
-    emailOtpSentAt: new Date(now).toISOString()
-  });
-  try { await sendVerificationEmail(user.email, code); }
-  catch (error) {
-    await store.updateUser(user.email, { emailOtpHash: null, emailOtpExpiresAt: null });
-    throw error;
-  }
-  return process.env.EMAIL_TEST_MODE === "true" && process.env.NODE_ENV !== "production" ? code : undefined;
-}
-
 const round2 = (n) => Math.round(n * 100) / 100;
 
 function newOrderId() {
@@ -236,6 +183,7 @@ function publicOrder(o, user = null) {
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "50kb" }));
+app.get("/", (_req, res) => res.redirect(301, "/profile.html"));
 app.use(express.static(path.join(__dirname, "public")));
 app.use((req,res,next)=>{const token=String(req.get("authorization")||"").replace(/^Bearer /,"");req.user=sessions.get(token)||null;next();});
 
@@ -305,58 +253,20 @@ app.post("/api/auth/register", wrap(async (req,res) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !name || password.length < 10) throw new UserError("Enter a valid email, your name and a password of at least 10 characters.");
   if (!["customer","chef","driver"].includes(role)) throw new UserError("Choose customer, chef or driver.");
   const salt = crypto.randomBytes(16).toString("hex");
-  const user = {email,name,phone,address,role,staffId:role==="chef"?"KCH-"+crypto.randomBytes(3).toString("hex").toUpperCase():role==="driver"?"DRV-"+crypto.randomBytes(3).toString("hex").toUpperCase():null,approved:role==="customer",status:role==="customer"?"approved":"pending",emailVerified:false,passwordSalt:salt,passwordHash:crypto.scryptSync(password,salt,64).toString("hex"),createdAt:new Date().toISOString()};
+  const user = {email,name,phone,address,role,staffId:role==="chef"?"KCH-"+crypto.randomBytes(3).toString("hex").toUpperCase():role==="driver"?"DRV-"+crypto.randomBytes(3).toString("hex").toUpperCase():null,approved:role==="customer",status:role==="customer"?"approved":"pending",emailVerified:true,passwordSalt:salt,passwordHash:crypto.scryptSync(password,salt,64).toString("hex"),createdAt:new Date().toISOString()};
   try { await store.saveUser(user); } catch(e) { if(e.code==="USER_EXISTS") throw new UserError("An account with this email already exists."); throw e; }
-  try {
-    const testCode = await issueEmailOtp(user);
-    res.status(201).json({message:"We sent a 6-digit verification code to your email. Enter it to verify your account.",verificationRequired:true,email:user.email,...(testCode?{testCode}: {})});
-  } catch(error) {
-    await store.deleteUser(email);
-    throw error;
-  }
+  res.status(201).json({message:role==="customer"?"Account created. You can now sign in.":"Staff application created. An administrator must approve it before you can sign in.",user:safeUser(user)});
 }));
 app.post("/api/auth/login", wrap(async (req,res) => {
   const loginId=clean(req.body.email,160).toLowerCase(), password=String(req.body.password||"");
   const user=loginId.includes("@")?await store.getUser(loginId):(await store.listUsers()).find(u=>String(u.staffId||"").toLowerCase()===loginId)||null;
   const hash=user?crypto.scryptSync(password,user.passwordSalt,64).toString("hex"):"";
   if(!user || hash!==user.passwordHash) return res.status(401).json({error:"Email or password is incorrect."});
-  if(user.emailVerified !== true) {
-    let testCode;
-    if (!user.emailOtpHash || !user.emailOtpExpiresAt || Date.parse(user.emailOtpExpiresAt) <= Date.now()) testCode = await issueEmailOtp(user);
-    return res.status(403).json({error:"Please verify your email address before signing in. We have sent a one-time code.",verificationRequired:true,email:user.email,...(testCode?{testCode}: {})});
-  }
-  if(!user.approved) return res.status(403).json({error:"Your email is verified. Your staff account is awaiting admin approval."});
+  if(!user.approved) return res.status(403).json({error:"Your staff account is awaiting admin approval."});
   const token=crypto.randomBytes(32).toString("hex");
   const safe=safeUser(user);
   sessions.set(token,safe); res.json({token,user:safe});
 }));
-app.post("/api/auth/resend-verification", wrap(async (req,res) => {
-  const email=clean(req.body.email,160).toLowerCase(), password=String(req.body.password||"");
-  const user=await store.getUser(email);
-  const hash=user?crypto.scryptSync(password,user.passwordSalt,64).toString("hex"):"";
-  if(!user || hash!==user.passwordHash) return res.status(401).json({error:"Email or password is incorrect."});
-  if(user.emailVerified===true) return res.json({message:"This email is already verified."});
-  const testCode=await issueEmailOtp(user);
-  res.json({message:"A new verification code has been sent.",verificationRequired:true,email,...(testCode?{testCode}:{})});
-}));
-app.post("/api/auth/verify-email", wrap(async (req,res) => {
-  const email=clean(req.body.email,160).toLowerCase(), code=String(req.body.code||"").trim();
-  const user=await store.getUser(email);
-  if(!user) return res.status(400).json({error:"The email or verification code is invalid."});
-  if(user.emailVerified===true) return res.status(400).json({error:"This email is already verified. Please sign in with your password."});
-  if(!/^\d{6}$/.test(code) || !user.emailOtpHash || !user.emailOtpExpiresAt || Date.parse(user.emailOtpExpiresAt)<=Date.now()) return res.status(400).json({error:"That code is invalid or expired. Request a new one."});
-  if(Number(user.emailOtpAttempts||0)>=5) return res.status(429).json({error:"Too many incorrect attempts. Request a new code."});
-  const expected=Buffer.from(user.emailOtpHash), actual=Buffer.from(otpHash(email,code));
-  if(expected.length!==actual.length || !crypto.timingSafeEqual(expected,actual)) {
-    await store.updateUser(email,{emailOtpAttempts:Number(user.emailOtpAttempts||0)+1});
-    return res.status(400).json({error:"That verification code is incorrect."});
-  }
-  const updated=await store.updateUser(email,{emailVerified:true,emailOtpHash:null,emailOtpExpiresAt:null,emailOtpAttempts:0});
-  if(!updated.approved) return res.json({verified:true,message:"Email verified successfully. Your staff account is waiting for administrator approval.",user:safeUser(updated)});
-  const token=crypto.randomBytes(32).toString("hex"), safe=safeUser(updated); sessions.set(token,safe);
-  res.json({verified:true,token,user:safe});
-}));
-
 app.post("/api/auth/admin-login", wrap(async (req,res) => {
   const password=String(req.body.password||"");
   const given=Buffer.from(password), real=Buffer.from(ADMIN_PASSWORD||"");
@@ -422,9 +332,9 @@ app.post("/api/admin/users", requireAdmin, wrap(async (req,res) => {
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!name||password.length<10) throw new UserError("Enter a valid email, name and password of at least 10 characters.");
   if(!["customer","chef","driver"].includes(role)) throw new UserError("Choose customer, kitchen staff or driver.");
   const salt=crypto.randomBytes(16).toString("hex");
-  const user={email,name,phone,address,role,staffId:role==="chef"?"KCH-"+crypto.randomBytes(3).toString("hex").toUpperCase():role==="driver"?"DRV-"+crypto.randomBytes(3).toString("hex").toUpperCase():null,approved:true,status:"approved",emailVerified:false,passwordSalt:salt,passwordHash:crypto.scryptSync(password,salt,64).toString("hex"),createdAt:new Date().toISOString(),createdBy:"admin"};
+  const user={email,name,phone,address,role,staffId:role==="chef"?"KCH-"+crypto.randomBytes(3).toString("hex").toUpperCase():role==="driver"?"DRV-"+crypto.randomBytes(3).toString("hex").toUpperCase():null,approved:true,status:"approved",emailVerified:true,passwordSalt:salt,passwordHash:crypto.scryptSync(password,salt,64).toString("hex"),createdAt:new Date().toISOString(),createdBy:"admin"};
   try{await store.saveUser(user);}catch(e){if(e.code==="USER_EXISTS")throw new UserError("An account with this email already exists.");throw e;}
-  try { const testCode=await issueEmailOtp(user); res.status(201).json({user:safeUser(user),verificationSent:true,...(testCode?{testCode}:{})}); } catch(error) { await store.deleteUser(email); throw error; }
+  res.status(201).json({user:safeUser(user)});
 }));
 app.delete("/api/admin/users/:email", requireAdmin, wrap(async (req,res) => {
   const email=decodeURIComponent(req.params.email).toLowerCase();
