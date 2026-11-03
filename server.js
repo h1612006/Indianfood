@@ -154,7 +154,7 @@ function buildOrder(body) {
 }
 
 // Customers only see what they need to track their own order.
-function publicOrder(o) {
+function publicOrder(o, user = null) {
   return {
     id: o.id,
     type: o.type,
@@ -168,6 +168,7 @@ function publicOrder(o) {
     paymentReceived: !!o.paymentReceived,
     createdAt: o.createdAt,
     updatedAt: o.updatedAt,
+    ...(user && user.role === "customer" && o.customerEmail === user.email && o.deliveryOtp ? { deliveryOtp: o.deliveryOtp } : {}),
   };
 }
 
@@ -206,6 +207,7 @@ app.post(
       if (stock[line && line.itemId] === false) throw new UserError("Out of stock.");
     }
     const order = buildOrder(req.body); // throws UserError on bad input
+    if (req.user) { if (req.user.role !== "customer" || !req.user.approved) throw new UserError("Use a customer account to place this order."); order.customerEmail = req.user.email; order.customer = { ...order.customer, name: req.user.name || order.customer.name, phone: req.user.phone || order.customer.phone }; }
 
     for (let attempt = 0; ; attempt++) {
       order.id = newOrderId();
@@ -226,7 +228,7 @@ app.get(
   wrap(async (req, res) => {
     const order = await store.getOrder(String(req.params.id).toUpperCase());
     if (!order) return res.status(404).json({ error: "Order not found." });
-    res.json({ order: publicOrder(order) });
+    res.json({ order: publicOrder(order, req.user) });
   })
 );
 
@@ -389,6 +391,7 @@ app.patch("/api/admin/orders/:id/payment", requireAdmin, wrap(async (req, res) =
 }));
 
 function requireDriver(req, res, next) {
+  if (req.user && req.user.role === "driver" && req.user.approved) { req.driver = req.user; return next(); }
   const given = Buffer.from(String(req.get("x-driver-password") || ""));
   const real = Buffer.from(DRIVER_PASSWORD || "");
   const ok = real.length >= 12 && given.length === real.length && crypto.timingSafeEqual(given, real);
@@ -401,7 +404,7 @@ app.get("/api/driver/orders", requireDriver, wrap(async (_req, res) => {
   // after the kitchen dispatches them. OTP actions remain available only after
   // the manager moves an order to out_for_delivery.
   const orders = (await store.listOrders())
-    .filter(o => o.type === "delivery" && ["received", "preparing", "ready", "out_for_delivery", "picked_up"].includes(o.status) && (!o.driverAcceptedBy || o.driverAcceptedBy === String(_req.get("x-driver-id") || "legacy-driver")) && o.driverRejectedBy !== String(_req.get("x-driver-id") || "legacy-driver"))
+    .filter(o => o.type === "delivery" && ["received", "preparing", "ready", "out_for_delivery", "picked_up"].includes(o.status) && (!o.driverAcceptedBy || o.driverAcceptedBy === ((_req.driver && _req.driver.email) || "legacy-driver")) && o.driverRejectedBy !== String(_req.get("x-driver-id") || "legacy-driver"))
     .map(o => ({
       id: o.id,
       status: o.status,
@@ -421,7 +424,7 @@ app.post("/api/driver/orders/:id/decision", requireDriver, wrap(async (req,res) 
   if(!["accept","reject"].includes(decision)) throw new UserError("Choose accept or reject.");
   const id=String(req.params.id).toUpperCase(), order=await store.getOrder(id);
   if(!order||order.type!=="delivery"||!["received","preparing","ready"].includes(order.status)) return res.status(404).json({error:"This delivery is no longer available."});
-  const driver=String(req.get("x-driver-id")||"legacy-driver");
+  const driver=(req.driver && req.driver.email) || "legacy-driver";
   if(decision==="accept") {
     if(order.driverAcceptedBy&&order.driverAcceptedBy!==driver) throw new UserError("Another driver has already accepted this order.");
     await store.setStatus(id,order.status,new Date().toISOString(),{driverAcceptedBy:driver,driverDecision:"accepted",driverAcceptedAt:new Date().toISOString(),driverRejectedBy:null});
@@ -438,7 +441,7 @@ app.post("/api/driver/orders/:id/handover", requireDriver, wrap(async (req, res)
   if (!/^\d{6}$/.test(code)) throw new UserError("Enter the 6-digit handover code.");
   const order = await store.getOrder(String(req.params.id).toUpperCase());
   if (!order || order.type !== "delivery") return res.status(404).json({error:"Delivery order not found."});
-  if (order.driverAcceptedBy && order.driverAcceptedBy !== String(req.get("x-driver-id") || "legacy-driver")) throw new UserError("This delivery is assigned to another driver.");
+  if (order.driverAcceptedBy && order.driverAcceptedBy !== ((req.driver && req.driver.email) || "legacy-driver")) throw new UserError("This delivery is assigned to another driver.");
   const failKey = req.ip + ":" + order.id;
   const attempt = otpFailures.get(failKey) || {count:0,until:0};
   if (attempt.until > Date.now()) throw new UserError("Too many incorrect codes. Try again in 5 minutes.");
