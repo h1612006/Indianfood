@@ -29,7 +29,7 @@ const FILTERS = [
 async function api(path, options = {}) {
   const res = await fetch(path, {
     ...options,
-    headers: { "Content-Type": "application/json", "x-admin-password": password, "Authorization": localStorage.getItem("ss_chef_token") ? "Bearer " + localStorage.getItem("ss_chef_token") : "", ...(options.headers || {}) },
+    headers: { "Content-Type": "application/json", "x-admin-password": password, "Authorization": localStorage.getItem("ss_chef_token") ? "Bearer " + localStorage.getItem("ss_chef_token") : (localStorage.getItem("ss_admin_token") ? "Bearer " + localStorage.getItem("ss_admin_token") : ""), ...(options.headers || {}) },
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401) throw Object.assign(new Error(data.error || "Unauthorized"), { auth: true });
@@ -52,6 +52,7 @@ function showBoard() {
   $("#board").hidden = false;
   $("#logout").hidden = false;
   const chefOnly = !!localStorage.getItem("ss_chef_token");
+  const adminOnly = !!localStorage.getItem("ss_admin_token") || !!password;
   const approvalsButton = $('#kitchenNav [data-section="staffApprovals"]');
   if (approvalsButton) approvalsButton.hidden = chefOnly;
   if (chefOnly && activeSection === "staffApprovals") activeSection = "ordersPanel";
@@ -197,7 +198,7 @@ function timeAgo(iso) {
 function nextAction(o) {
   const delivery = o.type === "delivery";
   return {
-    received: { to: "preparing", label: "Start preparing" },
+    received: { to: "preparing", label: "Accept order · start preparing" },
     preparing: { to: delivery ? "out_for_delivery" : "ready", label: delivery ? "Out for delivery · generate OTPs" : "Mark ready" },
     ready: { to: "completed", label: o.type === "eat_here" ? "Mark served" : "Mark picked up" },
   }[o.status];
@@ -296,7 +297,7 @@ async function boot() {
         const r=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password})});
         const d=await r.json();
         if(!r.ok) throw new Error(d.error||"Login failed.");
-        if(d.user.role!=="chef") throw new Error("This account is not an approved chef account.");
+        if(d.user.role!=="chef") throw new Error("This account is not an approved kitchen staff account.");
         localStorage.setItem("ss_chef_token",d.token); password="";
       }catch(ex){showLogin(ex.message);return;}
     }else{sessionStorage.setItem("ss_admin",password);}
@@ -306,6 +307,7 @@ async function boot() {
   $("#logout").addEventListener("click", () => {
     sessionStorage.removeItem("ss_admin");
     localStorage.removeItem("ss_chef_token");
+    localStorage.removeItem("ss_admin_token");
     password = "";
     $("#pw").value = "";
     showLogin();
@@ -378,7 +380,7 @@ async function boot() {
     setStatus(b.closest(".o-card").dataset.id, b.dataset.set);
   });
 
-  if (password || localStorage.getItem("ss_chef_token")) load();
+  if (password || localStorage.getItem("ss_chef_token") || localStorage.getItem("ss_admin_token")) load();
   else showLogin();
 }
 
