@@ -216,6 +216,6 @@ Email delivery supports Brevo or Resend. Brevo can use a verified Gmail sender a
 - `BREVO_API_KEY`: a Brevo transactional email API key (recommended if you want to use a verified Gmail sender address), or `RESEND_API_KEY` for Resend.
 - `EMAIL_FROM`: the sender email address verified with your provider. With Resend, use a sender on a verified domain. With Brevo, verify the sender address in your Brevo account.
 - `EMAIL_FROM_NAME`: optional sender display name; defaults to `Spice Smash`.
-- `OTP_PEPPER`: a long random secret used to hash verification codes.
+- `OTP_PEPPER`: a long random secret used to hash verification codes (recommended; if omitted, the configured admin password is used as the pepper).
 
-The code is delivered to the account's email address, including Gmail addresses. Verify your sending domain and configure its DNS records in Resend before enabling registration. Automated tests set `EMAIL_TEST_MODE=true`; the test-only code is never returned in production.
+The code is delivered to the account's email address, including Gmail addresses. Before enabling registration, verify the sender address in Brevo or verify your sending domain and DNS records in Resend. Automated tests set `EMAIL_TEST_MODE=true`; the test-only code is never returned in production.
