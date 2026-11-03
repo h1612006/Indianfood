@@ -32,7 +32,7 @@ class UserError extends Error {}
 // Never return password hashes, salts, or email-verification secrets to any browser.
 function safeUser(user) {
   if (!user) return null;
-  const { passwordHash, passwordSalt, emailOtpHash, emailOtpExpiresAt, emailOtpAttempts, emailOtpSentAt, ...safe } = user;
+  const { password, passwordHash, passwordSalt, emailOtpHash, emailOtpExpiresAt, emailOtpAttempts, emailOtpSentAt, ...safe } = user;
   return safe;
 }
 function otpHash(email, code) {
@@ -389,7 +389,7 @@ function requireKitchen(req,res,next) {
 }
 function requireChef(req,res,next) {
   if (req.user && req.user.role === "chef" && req.user.approved) return next();
-  if (!req.user) return res.status(401).json({error:"Sign in with an approved kitchen staff account."});
+  if (!req.user) { const given=Buffer.from(String(req.get("x-admin-password")||"")), real=Buffer.from(ADMIN_PASSWORD||""); if(real.length>0 && given.length===real.length && crypto.timingSafeEqual(given,real)) return res.status(403).json({error:"Administrators cannot accept or progress orders. An approved kitchen staff member must do this."}); return res.status(401).json({error:"Sign in with an approved kitchen staff account."}); }
   return res.status(403).json({error:"Only approved kitchen staff can accept and update orders."});
 }
 function requireSuperAdmin(req,res,next) {
