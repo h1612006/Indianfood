@@ -295,16 +295,17 @@ function createPgStore() {
 
     async claimOrder(id, driver, at) {
       const { rows } = await pool.query(
-        \`UPDATE orders SET updated_at = $3,
+        `UPDATE orders SET updated_at = $3,
          data = data || jsonb_build_object('driverAcceptedBy', $2::text, 'driverDecision', 'accepted', 'driverAcceptedAt', $3::text, 'driverRejectedBy', NULL, 'updatedAt', $3::text)
          WHERE id = $1 AND (data->>'driverAcceptedBy' IS NULL OR data->>'driverAcceptedBy' = $2)
-         RETURNING status, created_at, updated_at, data\`,
+         RETURNING status, created_at, updated_at, data`,
         [id, driver, at]
       );
       return rows[0] ? toOrder(rows[0]) : null;
     },
 
-    async setStatus(id, status, at, extra = {}) {\n      const current = await this.getOrder(id);
+    async setStatus(id, status, at, extra = {}) {
+      const current = await this.getOrder(id);
       if (!current) return null;
       const updated = { ...current, ...extra, status, updatedAt: at };
       const { rows } = await pool.query(
