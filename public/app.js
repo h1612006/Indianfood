@@ -527,7 +527,7 @@ function renderTracker(order) {
   $("#trackBody").innerHTML = `
     <div class="track-id">ORDER ${esc(order.id)}</div>
     <h2 class="track-title" id="trackTitle">${esc(headline(order))}</h2>
-    <p class="muted">${order.type === "delivery" ? "Delivery" : "Pickup"} · ${order.payment === "card" ? "Card (demo)" : order.type === "delivery" ? "Pay on delivery" : "Pay at the counter"}</p>
+    <p class="muted">${order.type === "delivery" ? "Delivery" : "Pickup"} · ${({cash:"Cash",card:"Card",bizum:"Bizum",counter:order.type === "delivery" ? "Pay on delivery" : "Pay at the counter"})[order.payment] || esc(order.payment)}</p>
     ${
       cancelled
         ? `<div class="cancelled-banner">Sorry — the restaurant cancelled this order. Please call us or place a new one.</div>`
