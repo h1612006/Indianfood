@@ -239,12 +239,13 @@ app.post("/api/auth/register", wrap(async (req,res) => {
   const email = clean(req.body.email,160).toLowerCase();
   const name = clean(req.body.name,80);
   const phone = clean(req.body.phone,30);
+  const address = clean(req.body.address,200);
   const password = String(req.body.password || "");
   const role = req.body.role || "customer";
   if (!email.includes("@") || !name || password.length < 10) throw new UserError("Enter a valid email, your name and a password of at least 10 characters.");
   if (!["customer","chef","driver"].includes(role)) throw new UserError("Choose customer, chef or driver.");
   const salt = crypto.randomBytes(16).toString("hex");
-  const user = {email,name,phone,role,approved:role==="customer",status:role==="customer"?"approved":"pending",passwordSalt:salt,passwordHash:crypto.scryptSync(password,salt,64).toString("hex"),createdAt:new Date().toISOString()};
+  const user = {email,name,phone,address,role,approved:role==="customer",status:role==="customer"?"approved":"pending",passwordSalt:salt,passwordHash:crypto.scryptSync(password,salt,64).toString("hex"),createdAt:new Date().toISOString()};
   try { await store.saveUser(user); } catch(e) { if(e.code==="USER_EXISTS") throw new UserError("An account with this email already exists."); throw e; }
   if(role!=="customer") return res.status(201).json({message:"Staff application sent for admin approval.",status:"pending"});
   const token=crypto.randomBytes(32).toString("hex"); sessions.set(token,{email,name,phone,role,approved:true});
