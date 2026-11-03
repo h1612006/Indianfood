@@ -311,8 +311,7 @@ async function boot() {
 
   $("#logout").addEventListener("click", () => {
     sessionStorage.removeItem("ss_admin");
-    localStorage.removeItem("ss_chef_token");
-    localStorage.removeItem("ss_admin_token");
+    ["ss_auth_token","ss_chef_token","ss_driver_token","ss_admin_token","ss_customer_profile"].forEach(k=>localStorage.removeItem(k));
     password = "";
     $("#pw").value = "";
     showLogin();
