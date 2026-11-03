@@ -428,6 +428,7 @@ function wireCart() {
 /* ---------- checkout ---------- */
 
 function openCheckout() {
+  if (!localStorage.getItem("ss_auth_token")) { location.href = "/profile.html?next=order"; return; }
   const t = cartTotals();
   const delivery = orderType === "delivery";
   $("#addressRow").hidden = !delivery;
@@ -475,7 +476,7 @@ function wireCheckout() {
     try {
       const res = await fetch("/api/orders", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (localStorage.getItem("ss_auth_token") || "") },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -530,6 +531,7 @@ function renderTracker(order) {
 
   $("#trackBody").innerHTML = `
     <div class="track-id">ORDER ${esc(order.id)}</div>
+    ${order.deliveryOtp && order.type === "delivery" ? `<div class="note" style="margin:12px 0;padding:14px;border:2px dashed #d62828"><strong>Your delivery OTP: <span style="font-size:24px;letter-spacing:4px">${esc(order.deliveryOtp)}</span></strong><br>Give this code to your driver only when your food arrives.</div>` : ""}
     <h2 class="track-title" id="trackTitle">${esc(headline(order))}</h2>
     <p class="muted">${order.type === "delivery" ? "Delivery" : order.type === "eat_here" ? "Eat here" : "Takeaway"} · ${({cash:"Cash",card:"Card",bizum:"Bizum",counter:order.type === "delivery" ? "Pay on delivery" : "Pay at the counter"})[order.payment] || esc(order.payment)}</p>
     ${
@@ -561,7 +563,7 @@ function renderTracker(order) {
 }
 
 async function fetchOrder(id) {
-  const res = await fetch("/api/orders/" + encodeURIComponent(id));
+  const res = await fetch("/api/orders/" + encodeURIComponent(id), { headers: { "Authorization": "Bearer " + (localStorage.getItem("ss_auth_token") || "") } });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Order not found.");
   return data.order;
