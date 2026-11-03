@@ -16,6 +16,7 @@ let stock = {};
 let menuCategories = [];
 let editingMenuId = null;
 let staffApplications = [];
+let activeSection = "ordersPanel";
 
 const ACTIVE = ["received", "preparing", "ready", "out_for_delivery", "picked_up"];
 
@@ -50,6 +51,25 @@ function showBoard() {
   $("#loginBox").hidden = true;
   $("#board").hidden = false;
   $("#logout").hidden = false;
+  const chefOnly = !!localStorage.getItem("ss_chef_token");
+  const approvalsButton = $('#kitchenNav [data-section="staffApprovals"]');
+  if (approvalsButton) approvalsButton.hidden = chefOnly;
+  if (chefOnly && activeSection === "staffApprovals") activeSection = "ordersPanel";
+  showSection(activeSection);
+}
+
+function showSection(sectionId) {
+  const allowed = ["ordersPanel", "stockPanel", "menuPanel", "staffApprovals"];
+  if (!allowed.includes(sectionId)) sectionId = "ordersPanel";
+  if (sectionId === "staffApprovals" && localStorage.getItem("ss_chef_token")) sectionId = "ordersPanel";
+  activeSection = sectionId;
+  document.querySelectorAll(".kitchen-section").forEach(section => {
+    section.hidden = section.id !== activeSection;
+  });
+  document.querySelectorAll("#kitchenNav [data-section]").forEach(button => {
+    button.classList.toggle("active", button.dataset.section === activeSection);
+    button.setAttribute("aria-current", button.dataset.section === activeSection ? "page" : "false");
+  });
 }
 
 async function load() {
@@ -60,7 +80,7 @@ async function load() {
     showBoard();
     $("#boardErr").hidden = true;
     try { await loadStock(); } catch (stockError) { $("#stockItems").textContent = "Could not load stock: " + stockError.message; }
-    try { await loadStaffApplications(); } catch (staffError) { $("#staffApplications").textContent = "Could not load applications: " + staffError.message; }
+    if (!localStorage.getItem("ss_chef_token")) { try { await loadStaffApplications(); } catch (staffError) { $("#staffApplications").textContent = "Could not load applications: " + staffError.message; } }
 
     const newOnes = orders.filter((o) => !knownIds.has(o.id));
     if (!firstLoad && newOnes.length) beep();
@@ -291,6 +311,11 @@ async function boot() {
     showLogin();
   });
 
+  $("#kitchenNav").addEventListener("click", (e) => {
+    const button = e.target.closest("[data-section]");
+    if (button && !button.hidden) showSection(button.dataset.section);
+  });
+
   $("#filters").addEventListener("click", (e) => {
     const b = e.target.closest("[data-filter]");
     if (b) {
@@ -353,7 +378,7 @@ async function boot() {
     setStatus(b.closest(".o-card").dataset.id, b.dataset.set);
   });
 
-  if (password) load();
+  if (password || localStorage.getItem("ss_chef_token")) load();
   else showLogin();
 }
 
