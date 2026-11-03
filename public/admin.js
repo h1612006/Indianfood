@@ -10,7 +10,9 @@ let filter = "active";
 let currency = "€";
 let timer = null;
 let knownIds = new Set();
-let firstLoad = true;\nlet menuItems = [];\nlet stock = {};
+let firstLoad = true;
+let menuItems = [];
+let stock = {};
 
 const ACTIVE = ["received", "preparing", "ready"];
 
@@ -74,7 +76,26 @@ async function load() {
   timer = setTimeout(load, 5000);
 }
 
-async function loadStock() {\n  const data = await api("/api/admin/stock");\n  stock = data.stock || {};\n  renderStock();\n}\n\nfunction renderStock() {\n  $("#stockItems").innerHTML = menuItems.map((item) => {\n    const available = stock[item.id] !== false;\n    return `<div class="stock-row"><strong>${esc(item.name)}</strong><button class="stock-toggle ${available ? "" : "off"}" data-stock="${esc(item.id)}" data-available="${available}">${available ? "In stock" : "Out of stock"}</button></div>`;\n  }).join("");\n}\n\nasync function setStock(id, available, button) {\n  button.disabled = true;\n  try { const data = await api("/api/admin/stock/" + encodeURIComponent(id), { method:"PATCH", body:JSON.stringify({available}) }); stock = data.stock || stock; renderStock(); }\n  catch (ex) { alert(ex.message); button.disabled = false; }\n}\n\nfunction beep() {
+async function loadStock() {
+  const data = await api("/api/admin/stock");
+  stock = data.stock || {};
+  renderStock();
+}
+
+function renderStock() {
+  $("#stockItems").innerHTML = menuItems.map((item) => {
+    const available = stock[item.id] !== false;
+    return `<div class="stock-row"><strong>${esc(item.name)}</strong><button class="stock-toggle ${available ? "" : "off"}" data-stock="${esc(item.id)}" data-available="${available}">${available ? "In stock" : "Out of stock"}</button></div>`;
+  }).join("");
+}
+
+async function setStock(id, available, button) {
+  button.disabled = true;
+  try { const data = await api("/api/admin/stock/" + encodeURIComponent(id), { method:"PATCH", body:JSON.stringify({available}) }); stock = data.stock || stock; renderStock(); }
+  catch (ex) { alert(ex.message); button.disabled = false; }
+}
+
+function beep() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const osc = ctx.createOscillator();
@@ -150,8 +171,8 @@ function render() {
         <div class="o-items">
           ${o.items
             .map((l) => {
-              const extra = [l.unit, l.size, ...l.addons.map((a) => "+ " + a), ...l.removed.map((r) => "NO " + r.toUpperCase())].filter(Boolean);
-              return `<div class="l"><strong>${l.qty}×</strong> ${esc(l.name)}${extra.length ? `<span class="m">${[...extra, ...(l.spice ? ["Spice: " + l.spice] : [])].map(esc).join(" · ")}</span>` : ""}</div>`;
+              const extra = [l.unit, l.size, ...(l.spice ? ["Spice: " + l.spice] : []), ...l.addons.map((a) => "+ " + a), ...l.removed.map((r) => "NO " + r.toUpperCase())].filter(Boolean);
+              return `<div class="l"><strong>${l.qty}×</strong> ${esc(l.name)}${extra.length ? `<span class="m">${extra.map(esc).join(" · ")}</span>` : ""}</div>`;
             })
             .join("")}
         </div>
@@ -208,7 +229,12 @@ async function boot() {
     }
   });
 
-  $("#stockItems").addEventListener("click", (e) => {\n    const b = e.target.closest("[data-stock]");\n    if (b) setStock(b.dataset.stock, b.dataset.available !== "true", b);\n  });\n\n  $("#orders").addEventListener("click", (e) => {
+  $("#stockItems").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-stock]");
+    if (b) setStock(b.dataset.stock, b.dataset.available !== "true", b);
+  });
+
+  $("#orders").addEventListener("click", (e) => {
     const b = e.target.closest("[data-set]");
     if (!b) return;
     setStatus(b.closest(".o-card").dataset.id, b.dataset.set);
