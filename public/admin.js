@@ -56,6 +56,7 @@ async function load() {
     orders = data.orders;
     showBoard();
     $("#boardErr").hidden = true;
+    try { await loadStock(); } catch (stockError) { $("#stockItems").textContent = "Could not load stock: " + stockError.message; }
 
     const newOnes = orders.filter((o) => !knownIds.has(o.id));
     if (!firstLoad && newOnes.length) beep();
@@ -200,7 +201,9 @@ async function setStatus(id, status) {
 async function boot() {
   // The menu file tells us which currency symbol to show.
   try {
-    currency = (await (await fetch("/api/menu")).json()).currency || currency;
+    const menu = await (await fetch("/api/menu")).json();
+    currency = menu.currency || currency;
+    menuItems = menu.items || [];
   } catch (_) {
     /* keep default */
   }
