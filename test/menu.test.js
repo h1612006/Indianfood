@@ -46,3 +46,11 @@ test("every category has at least one item", () => {
     assert.ok(menu.items.some((i) => i.category === c.id), `category "${c.id}" is empty`);
   }
 });
+
+test("every real menu item offers exactly the three approved spice levels", () => {
+  for (const item of menu.items) assert.deepEqual(item.spiceLevels, ["Mid", "High", "Super High"], item.id);
+});
+
+test("menu exposes cash card and Bizum payment choices", () => {
+  assert.deepEqual(menu.payments, ["cash", "card", "bizum"]);
+});
