@@ -36,7 +36,7 @@ function safeUser(user) {
   return safe;
 }
 function otpHash(email, code) {
-  return crypto.createHash("sha256").update(email.toLowerCase() + ":" + code + ":" + (process.env.OTP_PEPPER || "spice-smash-email-otp")).digest("hex");
+  return crypto.createHash("sha256").update(email.toLowerCase() + ":" + code + ":" + (process.env.OTP_PEPPER || ADMIN_PASSWORD || "spice-smash-email-otp")).digest("hex");
 }
 async function sendVerificationEmail(email, code) {
   if (process.env.EMAIL_TEST_MODE === "true" && process.env.NODE_ENV !== "production") return;
@@ -410,7 +410,7 @@ app.post("/api/admin/users", requireAdmin, wrap(async (req,res) => {
   const email=clean(req.body.email,160).toLowerCase(), name=clean(req.body.name,80);
   const phone=clean(req.body.phone,30), address=clean(req.body.address,200);
   const password=String(req.body.password||""), role=req.body.role;
-  if(!email.includes("@")||!name||password.length<10) throw new UserError("Enter a valid email, name and password of at least 10 characters.");
+  if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||!name||password.length<10) throw new UserError("Enter a valid email, name and password of at least 10 characters.");
   if(!["customer","chef","driver"].includes(role)) throw new UserError("Choose customer, kitchen staff or driver.");
   const salt=crypto.randomBytes(16).toString("hex");
   const user={email,name,phone,address,role,staffId:role==="chef"?"KCH-"+crypto.randomBytes(3).toString("hex").toUpperCase():role==="driver"?"DRV-"+crypto.randomBytes(3).toString("hex").toUpperCase():null,approved:true,status:"approved",emailVerified:false,passwordSalt:salt,passwordHash:crypto.scryptSync(password,salt,64).toString("hex"),createdAt:new Date().toISOString(),createdBy:"admin"};
@@ -626,7 +626,7 @@ app.use("/api", (_req, res) => res.status(404).json({ error: "Not found." }));
 // Last stop for errors: always answer with JSON, never leak internals.
 // eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {
-  if (err instanceof UserError) return res.status(400).json({ error: err.message });
+  if (err instanceof UserError) return res.status(err.status || 400).json({ error: err.message });
   if (err.type === "entity.parse.failed") return res.status(400).json({ error: "Invalid request." });
   if (err.type === "entity.too.large") return res.status(413).json({ error: "Request too large." });
   console.error("Server error:", err);
