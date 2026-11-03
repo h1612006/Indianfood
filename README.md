@@ -113,7 +113,8 @@ Repository → **Settings** → **Secrets and variables** → **Actions** → **
 | `DEPLOY_USER` | The SSH user on the server |
 | `DEPLOY_SSH_KEY` | The full contents of the private file `deploy_key` |
 | `DEPLOY_PORT` | Optional. Only if SSH is not on port 22 |
-| `ADMIN_PASSWORD` | Kitchen screen password (choose a strong one) |\n| `DRIVER_PASSWORD` | Separate driver page password (choose a strong one) |
+| `ADMIN_PASSWORD` | Kitchen screen password (choose a strong one) |
+| `DRIVER_PASSWORD` | Separate driver page password (choose a strong one) |
 | `POSTGRES_PASSWORD` | Database password (letters and numbers) |
 
 Then push to `main` (or open the **Actions** tab → *Test, build and deploy* → **Run workflow**). When it turns green, open `http://YOUR-SERVER:3000`.
@@ -193,7 +194,10 @@ render.yaml        Optional quick-demo hosting config for Render
 | POST | `/api/orders` | Place an order |
 | GET | `/api/orders/:id` | Track an order (status and items only) |
 | GET | `/api/admin/orders` | All orders (needs `x-admin-password` header) |
-| PATCH | `/api/admin/orders/:id` | Change status; `out_for_delivery` generates two separate OTPs |\n| PATCH | `/api/admin/orders/:id/payment` | Mark payment received or not received |\n| GET | `/api/driver/orders` | Assigned/in-progress deliveries (driver password required) |\n| POST | `/api/driver/orders/:id/handover` | Verify pickup or customer delivery OTP |
+| PATCH | `/api/admin/orders/:id` | Change status; `out_for_delivery` generates two separate OTPs |
+| PATCH | `/api/admin/orders/:id/payment` | Mark payment received or not received |
+| GET | `/api/driver/orders` | Assigned/in-progress deliveries (driver password required) |
+| POST | `/api/driver/orders/:id/handover` | Verify pickup or customer delivery OTP |
 
 ## What is intentionally simple (and how to grow it)
 
