@@ -15,6 +15,7 @@ let menuItems = [];
 let stock = {};
 let menuCategories = [];
 let editingMenuId = null;
+let staffApplications = [];
 
 const ACTIVE = ["received", "preparing", "ready", "out_for_delivery", "picked_up"];
 
@@ -59,6 +60,7 @@ async function load() {
     showBoard();
     $("#boardErr").hidden = true;
     try { await loadStock(); } catch (stockError) { $("#stockItems").textContent = "Could not load stock: " + stockError.message; }
+    try { await loadStaffApplications(); } catch (staffError) { $("#staffApplications").textContent = "Could not load applications: " + staffError.message; }
 
     const newOnes = orders.filter((o) => !knownIds.has(o.id));
     if (!firstLoad && newOnes.length) beep();
@@ -133,6 +135,17 @@ async function setStock(id, available, button) {
   button.disabled = true;
   try { const data = await api("/api/admin/stock/" + encodeURIComponent(id), { method:"PATCH", body:JSON.stringify({available}) }); stock = data.stock || stock; renderStock(); }
   catch (ex) { alert(ex.message); button.disabled = false; }
+}
+
+
+async function loadStaffApplications() {
+  const data=await api("/api/admin/staff-applications");
+  staffApplications=data.applications||[];
+  $("#staffApplications").innerHTML=staffApplications.map(u=>`<div class="menu-item-row"><div><strong>${esc(u.name)}</strong><small>${esc(u.email)} · ${esc(u.role)} · Applied ${esc(new Date(u.createdAt).toLocaleDateString())}</small></div><button class="btn primary" data-staff-approve="true" data-email="${esc(u.email)}">Approve</button><button class="btn danger" data-staff-approve="false" data-email="${esc(u.email)}">Reject</button></div>`).join("")||'<p class="empty-a">No pending staff applications.</p>';
+}
+async function reviewStaff(email, approved) {
+  try { await api("/api/admin/staff-applications/"+encodeURIComponent(email),{method:"PATCH",body:JSON.stringify({approved})}); await loadStaffApplications(); }
+  catch(ex) { alert(ex.message); }
 }
 
 function beep() {
@@ -277,6 +290,8 @@ async function boot() {
       render();
     }
   });
+
+  $("#staffApplications").addEventListener("click", e => { const b=e.target.closest("[data-staff-approve]"); if(b) reviewStaff(b.dataset.email,b.dataset.staffApprove==="true"); });
 
   $("#stockItems").addEventListener("click", (e) => {
     const b = e.target.closest("[data-stock]");
