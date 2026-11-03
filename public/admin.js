@@ -14,7 +14,7 @@ let firstLoad = true;
 let menuItems = [];
 let stock = {};
 
-const ACTIVE = ["received", "preparing", "ready"];
+const ACTIVE = ["received", "preparing", "ready", "out_for_delivery", "picked_up"];
 
 const FILTERS = [
   { id: "active", label: "Active" },
@@ -126,8 +126,8 @@ function nextAction(o) {
   const delivery = o.type === "delivery";
   return {
     received: { to: "preparing", label: "Start preparing" },
-    preparing: { to: "ready", label: delivery ? "Out for delivery" : "Mark ready" },
-    ready: { to: "completed", label: delivery ? "Mark delivered" : "Mark picked up" },
+    preparing: { to: delivery ? "out_for_delivery" : "ready", label: delivery ? "Out for delivery · generate OTPs" : "Mark ready" },
+    ready: { to: "completed", label: "Mark picked up" },
   }[o.status];
 }
 
@@ -178,7 +178,7 @@ function render() {
             .join("")}
         </div>
         ${o.customer.notes ? `<div class="o-notes">📝 ${esc(o.customer.notes)}</div>` : ""}
-        <div class="o-foot"><span>Total</span><span>${money(o.total)}</span></div>
+        <div class="o-foot"><span>Total</span><span>${money(o.total)}</span></div>\n        <div class="o-notes">Payment: <strong>${o.paymentReceived ? "RECEIVED ✓" : "NOT RECEIVED"}</strong> · <button class="link-btn" data-payment="${o.paymentReceived ? "false" : "true"}">${o.paymentReceived ? "Mark not received" : "Mark received"}</button></div>\n        ${o.status === "out_for_delivery" || o.status === "picked_up" ? `<div class="o-notes"><strong>Handover codes — manager only</strong><br>Pickup code: <strong>${esc(o.pickupOtp || "Already confirmed")}</strong><br>Customer delivery code: <strong>${esc(o.deliveryOtp || "Already confirmed")}</strong><br><small>Share the pickup code with the driver and the delivery code with the customer. Never show the customer code to the driver.</small></div>` : ""}
         <div class="o-actions">
           ${act ? `<button class="btn primary" data-set="${act.to}">${esc(act.label)}</button>` : ""}
           ${final ? `<button class="btn" data-set="received">Reopen</button>` : `<button class="btn danger" data-set="cancelled">Cancel</button>`}
@@ -188,7 +188,7 @@ function render() {
     .join("");
 }
 
-async function setStatus(id, status) {
+async function setPayment(id, received) {\n  try { await api("/api/admin/orders/" + encodeURIComponent(id) + "/payment", {method:"PATCH", body:JSON.stringify({received})}); load(); }\n  catch (ex) { alert(ex.message); }\n}\n\nasync function setStatus(id, status) {
   if (status === "cancelled" && !confirm("Cancel order " + id + "?")) return;
   try {
     await api("/api/admin/orders/" + encodeURIComponent(id), { method: "PATCH", body: JSON.stringify({ status }) });
