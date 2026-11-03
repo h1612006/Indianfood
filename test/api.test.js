@@ -401,9 +401,9 @@ test("admin can mark payment received or not received", async () => {
 
 test("driver pickup and customer delivery OTPs are verified separately", async () => {
   const registration=await json("POST","/api/auth/register",{name:"Delivery Customer",email:"delivery-customer@example.com",phone:customer.phone,password:"customer-password-123",role:"customer"});
-  const registrationData=await registration.json();
-  const verifiedRegistration=await json("POST","/api/auth/verify-email",{email:"delivery-customer@example.com",code:registrationData.testCode});
-  const customerSession=await verifiedRegistration.json();
+  assert.equal(registration.status,201);
+  const customerLogin=await json("POST","/api/auth/login",{email:"delivery-customer@example.com",password:"customer-password-123"});
+  const customerSession=await customerLogin.json();
   const delivery={type:"delivery",customer:{...customer,address:"Calle Mayor 1"},items:[{itemId:"classic-smash",qty:3}]};
   const placedRes=await fetch(base+"/api/orders",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+customerSession.token},body:JSON.stringify(delivery)});
   const placed={res:placedRes,data:await placedRes.json()};
