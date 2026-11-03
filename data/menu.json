@@ -35,59 +35,89 @@
       "category": "street",
       "name": "Suji Dhokla",
       "description": "Soft steamed semolina cakes, served with green chutney.",
-      "price": 8.0,
+      "price": 8,
       "emoji": "🟨",
       "image": "/img/suji-dhokla.jpg",
-      "unit": "20 pieces"
+      "unit": "20 pieces",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "vada-pav",
       "category": "street",
       "name": "Vada Pav",
       "description": "Spiced potato fritter in a soft bun with chutney.",
-      "price": 3.0,
+      "price": 3,
       "emoji": "🍔",
       "image": "/img/vada-pav.jpg",
-      "unit": "per piece"
+      "unit": "per piece",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "kandvi",
       "category": "street",
       "name": "Kandvi",
       "description": "Soft rolled gram-flour bites topped with coriander and coconut.",
-      "price": 8.0,
+      "price": 8,
       "emoji": "🌀",
       "image": "/img/kandvi.jpg",
-      "unit": "24 pieces"
+      "unit": "24 pieces",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "pav-bhaji",
       "category": "street",
       "name": "Pav Bhaji",
       "description": "Spiced vegetable curry served with buttered bread rolls (pav).",
-      "price": 5.0,
+      "price": 5,
       "emoji": "🍞",
-      "image": "/img/pav-bhaji.jpg"
+      "image": "/img/pav-bhaji.jpg",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "pani-puri",
       "category": "street",
       "name": "Pani Puri",
       "description": "Crisp hollow puris with a spiced filling and flavoured water for dipping.",
-      "price": 8.0,
+      "price": 8,
       "emoji": "🫧",
       "image": "/img/pani-puri.jpg",
-      "unit": "pack of 30 puri"
+      "unit": "pack of 30 puri",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "dabeli",
       "category": "street",
       "name": "Dabeli",
       "description": "Sweet-and-spicy potato filling in a bun, topped with sev, peanuts and pomegranate.",
-      "price": 4.0,
+      "price": 4,
       "emoji": "🍔",
       "image": "/img/dabeli.jpg",
-      "unit": "per piece"
+      "unit": "per piece",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "pyaz-kachori",
@@ -97,27 +127,42 @@
       "price": 1.3,
       "emoji": "🥟",
       "image": "/img/pyaz-kachori.jpg",
-      "unit": "per piece"
+      "unit": "per piece",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "veg-kebab",
       "category": "fried",
       "name": "Veg Kebab",
       "description": "Golden fried vegetable patties, served with chutney.",
-      "price": 1.0,
+      "price": 1,
       "emoji": "🍘",
       "image": "/img/veg-kebab.jpg",
-      "unit": "per piece"
+      "unit": "per piece",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "alu-tikki",
       "category": "fried",
       "name": "Alu Tikki",
       "description": "Golden fried potato patties.",
-      "price": 1.0,
+      "price": 1,
       "emoji": "🥔",
       "image": "/img/alu-tikki.jpg",
-      "unit": "per piece"
+      "unit": "per piece",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "dal-kachori",
@@ -127,7 +172,12 @@
       "price": 1.3,
       "emoji": "🥟",
       "image": "/img/dal-kachori.jpg",
-      "unit": "per piece"
+      "unit": "per piece",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "samosa",
@@ -137,7 +187,12 @@
       "price": 1.3,
       "emoji": "🥟",
       "image": "/img/samosa.jpg",
-      "unit": "per piece"
+      "unit": "per piece",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "cutlet",
@@ -147,27 +202,42 @@
       "price": 0.9,
       "emoji": "🍘",
       "image": "/img/cutlet.jpg",
-      "unit": "per piece"
+      "unit": "per piece",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "bread-pakoda",
       "category": "fried",
       "name": "Bread Pakoda",
       "description": "Filled bread fritters in a crisp gram-flour batter, with green chutney.",
-      "price": 1.0,
+      "price": 1,
       "emoji": "🥪",
       "image": "/img/bread-pakoda.jpg",
-      "unit": "per piece"
+      "unit": "per piece",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "manchurian",
       "category": "mains",
       "name": "Manchurian",
       "description": "Fried balls in a tangy Indo-Chinese sauce, topped with spring onion.",
-      "price": 13.0,
+      "price": 13,
       "emoji": "🥘",
       "image": "/img/manchurian.jpg",
-      "unit": "22 pieces"
+      "unit": "22 pieces",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "thepla",
@@ -177,117 +247,182 @@
       "price": 0.8,
       "emoji": "🫓",
       "image": "/img/thepla.jpg",
-      "unit": "per piece"
+      "unit": "per piece",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "panner-sabji",
       "category": "mains",
       "name": "Panner Sabji",
       "description": "Soft paneer in a spiced tomato gravy.",
-      "price": 8.0,
+      "price": 8,
       "emoji": "🍛",
       "image": "/img/panner-sabji.jpg",
-      "unit": "per box"
+      "unit": "per box",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "alu-paratha",
       "category": "mains",
       "name": "Alu Paratha",
       "description": "Flatbread stuffed with spiced potato, served with chutney.",
-      "price": 1.0,
+      "price": 1,
       "emoji": "🫓",
       "image": "/img/alu-paratha.jpg",
-      "unit": "per piece"
+      "unit": "per piece",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "chowmein",
       "category": "mains",
       "name": "Chowmein",
       "description": "Stir-fried noodles with vegetables.",
-      "price": 4.0,
+      "price": 4,
       "emoji": "🍜",
       "image": "/img/chowmein.jpg",
-      "unit": "per box"
+      "unit": "per box",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "dal-makhani",
       "category": "mains",
       "name": "Dal Makhani",
       "description": "Slow-cooked black lentils in a creamy sauce.",
-      "price": 8.0,
+      "price": 8,
       "emoji": "🍲",
       "image": "/img/dal-makhani.jpg",
-      "unit": "per box"
+      "unit": "per box",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "papdi",
       "category": "dry",
       "name": "Papdi",
       "description": "Crunchy fried gram-flour snack, sold by the box.",
-      "price": 6.0,
+      "price": 6,
       "emoji": "🥨",
       "image": "/img/papdi.jpg",
-      "unit": "per box"
+      "unit": "per box",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "chakri",
       "category": "dry",
       "name": "Chakri",
       "description": "Crunchy spiral-shaped fried snack, sold by the box.",
-      "price": 8.0,
+      "price": 8,
       "emoji": "🌀",
       "image": "/img/chakri.jpg",
-      "unit": "per box"
+      "unit": "per box",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "chevado",
       "category": "dry",
       "name": "Chevado",
       "description": "Crunchy savoury Indian snack mix, sold by the kilo.",
-      "price": 15.0,
+      "price": 15,
       "emoji": "🥜",
       "image": "/img/chevado.jpg",
-      "unit": "per kg"
+      "unit": "per kg",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "gathiya",
       "category": "dry",
       "name": "Gathiya",
       "description": "Crispy gram-flour strips, sold by the box.",
-      "price": 6.0,
+      "price": 6,
       "emoji": "🥢",
       "image": "/img/gathiya.jpg",
-      "unit": "per box"
+      "unit": "per box",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "chat-padadi",
       "category": "dry",
       "name": "Chat Padadi",
       "description": "Crispy fried strips, sold by the box.",
-      "price": 5.0,
+      "price": 5,
       "emoji": "🥨",
       "image": "/img/chat-padadi.jpg",
-      "unit": "per box"
+      "unit": "per box",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "tikhi-puri",
       "category": "dry",
       "name": "Tikhi Puri",
       "description": "Crisp, spicy puris, sold by weight.",
-      "price": 4.0,
+      "price": 4,
       "emoji": "🫓",
       "image": "/img/tikhi-puri.jpg",
-      "unit": "250 g"
+      "unit": "250 g",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     },
     {
       "id": "mathari",
       "category": "dry",
       "name": "Mathari",
       "description": "Crisp savoury biscuits, sold by weight.",
-      "price": 8.0,
+      "price": 8,
       "emoji": "🍪",
       "image": "/img/mathari.jpg",
-      "unit": "500 g"
+      "unit": "500 g",
+      "spiceLevels": [
+        "Mid",
+        "High",
+        "Super High"
+      ]
     }
+  ],
+  "payments": [
+    "cash",
+    "card",
+    "bizum"
   ]
 }
