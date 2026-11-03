@@ -76,9 +76,12 @@ before(async () => {
   await waitForHealth(base);
   const customerRegistration = await fetch(base + "/api/auth/register", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Default Test Customer",email:"default-customer@example.com",phone:"+34 600 000 000",password:"default-customer-password",role:"customer"})});
   defaultCustomerToken = (await customerRegistration.json()).token;
-  await fetch(base + "/api/auth/register", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Kitchen Test Chef",email:"kitchen-chef@example.com",phone:"+34 600 000 001",password:"kitchen-chef-password",role:"chef"})});
-  await fetch(base + "/api/admin/staff-applications/kitchen-chef%40example.com", {method:"PATCH",headers:{"Content-Type":"application/json",...{"x-admin-password":ADMIN}},body:JSON.stringify({approved:true})});
+  const chefRegistration=await fetch(base + "/api/auth/register", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Kitchen Test Chef",email:"kitchen-chef@example.com",phone:"+34 600 000 001",password:"kitchen-chef-password",role:"chef"})});
+  assert.equal(chefRegistration.status,201);
+  const chefApproval=await fetch(base + "/api/admin/staff-applications/kitchen-chef%40example.com", {method:"PATCH",headers:{"Content-Type":"application/json","x-admin-password":ADMIN},body:JSON.stringify({approved:true})});
+  assert.equal(chefApproval.status,200);
   const chefLogin=await fetch(base+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:"kitchen-chef@example.com",password:"kitchen-chef-password"})});
+  assert.equal(chefLogin.status,200);
   chefToken=(await chefLogin.json()).token;
   console.log("Testing against:", /Order storage: (.*)/.exec(log)?.[1] || "unknown storage");
 });
@@ -101,7 +104,7 @@ const json = (method, url, body, headers = {}) =>
   });
 
 const admin = { "x-admin-password": ADMIN };
-const chefHeaders = { "Authorization": "Bearer " + (chefToken || "") };
+const chefHeaders = () => ({ "Authorization": "Bearer " + (chefToken || "") });
 const customer = { name: "Test Customer", phone: "+34 600 111 222" };
 
 async function placeOrder(overrides = {}) {
@@ -217,7 +220,7 @@ test("kitchen can move an order through every status, and the customer sees it",
   const id = data.order.id;
 
   for (const status of ["preparing", "ready", "completed"]) {
-    const res = await json("PATCH", "/api/admin/orders/" + id, { status }, chefHeaders);
+    const res = await json("PATCH", "/api/admin/orders/" + id, { status }, chefHeaders());
     assert.equal(res.status, 200);
     assert.equal((await res.json()).order.status, status);
     const seen = (await (await fetch(base + "/api/orders/" + id)).json()).order;
