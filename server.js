@@ -356,7 +356,7 @@ app.patch("/api/admin/staff-applications/:email", requireSuperAdmin, wrap(async 
 
 app.get(
   "/api/admin/orders",
-  requireAdmin,
+  requireKitchen,
   wrap(async (_req, res) => {
     res.json({ orders: await store.listOrders() });
   })
@@ -430,7 +430,7 @@ app.patch("/api/admin/menu/items/:id", requireAdmin, wrap(async (req, res) => {
 
 app.patch(
   "/api/admin/orders/:id",
-  requireAdmin,
+  requireChef,
   wrap(async (req, res) => {
     const status = req.body && req.body.status;
     if (!STATUSES.includes(status)) throw new UserError("Invalid status.");
