@@ -209,7 +209,7 @@ test("kitchen endpoints need the admin password", async () => {
   assert.equal((await fetch(base + "/api/admin/orders")).status, 401);
   assert.equal((await json("GET", "/api/admin/orders", undefined, { "x-admin-password": "wrong" })).status, 401);
   const { data } = await placeOrder();
-  assert.equal((await json("PATCH", "/api/admin/orders/" + data.order.id, { status: "ready" })).status, 401);
+  assert.equal((await json("PATCH", "/api/admin/orders/" + data.order.id, { status: "ready" })).status, 403);
 });
 
 test("kitchen can move an order through every status, and the customer sees it", async () => {
