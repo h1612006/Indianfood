@@ -207,6 +207,7 @@ app.post(
       if (stock[line && line.itemId] === false) throw new UserError("Out of stock.");
     }
     const order = buildOrder(req.body); // throws UserError on bad input
+    if (req.user && req.user.role === "customer" && req.user.approved) order.customerEmail = req.user.email;
     if (req.user) { if (req.user.role !== "customer" || !req.user.approved) throw new UserError("Use a customer account to place this order."); order.customerEmail = req.user.email; order.customer = { ...order.customer, name: req.user.name || order.customer.name, phone: req.user.phone || order.customer.phone }; }
 
     for (let attempt = 0; ; attempt++) {
@@ -403,13 +404,14 @@ app.get("/api/driver/orders", requireDriver, wrap(async (_req, res) => {
   // Show active delivery jobs to drivers as soon as they are placed, not only
   // after the kitchen dispatches them. OTP actions remain available only after
   // the manager moves an order to out_for_delivery.
+  const driverId = (_req.driver && _req.driver.email) || "legacy-driver";
   const orders = (await store.listOrders())
-    .filter(o => o.type === "delivery" && ["received", "preparing", "ready", "out_for_delivery", "picked_up"].includes(o.status) && (!o.driverAcceptedBy || o.driverAcceptedBy === ((_req.driver && _req.driver.email) || "legacy-driver")) && o.driverRejectedBy !== String(_req.get("x-driver-id") || "legacy-driver"))
+    .filter(o => o.type === "delivery" && ["received", "preparing", "ready", "out_for_delivery", "picked_up"].includes(o.status) && (!o.driverAcceptedBy || o.driverAcceptedBy === driverId) && o.driverRejectedBy !== driverId)
     .map(o => ({
       id: o.id,
       status: o.status,
       driverDecision: o.driverDecision || "open",
-      acceptedByMe: !!o.driverAcceptedBy && o.driverAcceptedBy === String(_req.get("x-driver-id") || "legacy-driver"),
+      acceptedByMe: !!o.driverAcceptedBy && o.driverAcceptedBy === driverId,
       customer: { name: o.customer.name, address: o.customer.address, phone: o.customer.phone },
       items: o.items,
       total: o.total,
