@@ -437,7 +437,8 @@ app.post("/api/driver/orders/:id/decision", requireDriver, wrap(async (req,res) 
   const driver=(req.driver && req.driver.email) || "legacy-driver";
   if(decision==="accept") {
     if(order.driverAcceptedBy&&order.driverAcceptedBy!==driver) throw new UserError("Another driver has already accepted this order.");
-    await store.setStatus(id,order.status,new Date().toISOString(),{driverAcceptedBy:driver,driverDecision:"accepted",driverAcceptedAt:new Date().toISOString(),driverRejectedBy:null});
+    const claimed=await store.claimOrder(id,driver,new Date().toISOString());
+    if(!claimed) throw new UserError("Another driver has already accepted this order.");
   } else {
     if(order.driverAcceptedBy&&order.driverAcceptedBy!==driver) throw new UserError("This order has already been accepted by another driver.");
     await store.setStatus(id,order.status,new Date().toISOString(),{driverAcceptedBy:null,driverDecision:"rejected",driverRejectedBy:driver,driverRejectedAt:new Date().toISOString()});
