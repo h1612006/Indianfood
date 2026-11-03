@@ -209,7 +209,7 @@ app.post(
     }
     const order = buildOrder(req.body); // throws UserError on bad input
     if (req.user && req.user.role === "customer" && req.user.approved) order.customerEmail = req.user.email;
-    if (req.user) { if (req.user.role !== "customer" || !req.user.approved) throw new UserError("Use a customer account to place this order."); order.customerEmail = req.user.email; order.customer = { ...order.customer, name: req.user.name || order.customer.name, phone: req.user.phone || order.customer.phone }; }
+    if (req.user && (req.user.role !== "customer" || !req.user.approved)) throw new UserError("Use a customer account to place this order.");
 
     for (let attempt = 0; ; attempt++) {
       order.id = newOrderId();
