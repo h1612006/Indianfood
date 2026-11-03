@@ -265,20 +265,14 @@ test("20 simultaneous orders all succeed with unique ids", async () => {
 test("customers can register and staff need admin approval", async () => {
   const customerReg=await json("POST","/api/auth/register",{name:"Profile Customer",email:"customer-profile@example.com",phone:"+34 600 222 333",password:"customer-password-123",role:"customer"});
   assert.equal(customerReg.status,201);
-  const customerData=await customerReg.json();
-  assert.equal(customerData.verificationRequired,true);
-  const customerVerified=await json("POST","/api/auth/verify-email",{email:"customer-profile@example.com",code:customerData.testCode});
-  const customerVerifiedData=await customerVerified.json();
-  assert.ok(customerVerifiedData.token);
-  assert.equal((await json("POST","/api/auth/verify-email",{email:"customer-profile@example.com",code:customerData.testCode})).status,400);
-  assert.equal(customerVerifiedData.user.role,"customer");
+  assert.equal((await customerReg.json()).verificationRequired,undefined);
+  const customerLogin=await json("POST","/api/auth/login",{email:"customer-profile@example.com",password:"customer-password-123"});
+  assert.equal(customerLogin.status,200);
+  assert.equal((await customerLogin.json()).user.role,"customer");
   const staffReg=await json("POST","/api/auth/register",{name:"New Driver",email:"new-driver@example.com",phone:"+34 600 333 444",password:"driver-password-123",role:"driver"});
   assert.equal(staffReg.status,201);
-  const staffRegData=await staffReg.json();
-  assert.equal(staffRegData.verificationRequired,true);
+  assert.equal((await staffReg.json()).verificationRequired,undefined);
   assert.equal((await json("POST","/api/auth/login",{email:"new-driver@example.com",password:"driver-password-123"})).status,403);
-  const staffVerified=await json("POST","/api/auth/verify-email",{email:"new-driver@example.com",code:staffRegData.testCode});
-  assert.equal((await staffVerified.json()).verified,true);
   const pending=await json("GET","/api/admin/staff-applications",undefined,admin);
   const pendingData=await pending.json();
   const driverApplication=pendingData.applications.find(u=>u.email==="new-driver@example.com");
