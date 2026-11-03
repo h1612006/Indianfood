@@ -79,13 +79,13 @@
 <body>
   <header class="a-top">
     <h1>🔥 Kitchen screen</h1>
-    <span><a href="/">Customer site</a> · <a href="/driver.html">Driver portal</a> · <button class="link-btn" id="logout" style="color:var(--yellow)" hidden>Log out</button></span>
+    <span><a id="adminUsersLink" href="/admin-users.html">Manage accounts</a> · <a href="/">Home</a> · <a href="/driver.html">Driver portal</a> · <button class="link-btn" id="logout" style="color:var(--yellow)" hidden>Log out</button></span>
   </header>
 
   <div id="loginBox" class="login" hidden>
     <h2>Staff login</h2>
     <form id="loginForm">
-      <input type="email" id="staffEmail" placeholder="Approved chef email (optional)" autocomplete="username">
+      <input type="text" id="staffEmail" placeholder="Kitchen staff email or ID (optional)" autocomplete="username">
       <input type="password" id="pw" placeholder="Password" autocomplete="current-password" required>
       <p class="a-error" id="loginErr" hidden></p>
       <button class="btn primary block" type="submit">Open kitchen screen</button>

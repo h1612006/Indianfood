@@ -91,6 +91,7 @@ function createFileStore(dir) {
       catch (e) { delete users[key]; throw e; }
       return user;
     },
+    async deleteUser(email) { const key=email.toLowerCase(); if(!users[key]) return false; delete users[key]; fs.writeFileSync(usersFile + ".tmp", JSON.stringify(users, null, 2)); fs.renameSync(usersFile + ".tmp", usersFile); return true; },
     async updateUser(email, patch) {
       const key = email.toLowerCase(), current = users[key];
       if (!current) return null;
@@ -257,6 +258,7 @@ function createPgStore() {
       catch (e) { if (e.code === "23505") throw Object.assign(new Error("Email already registered"), { code: "USER_EXISTS" }); throw e; }
       return user;
     },
+    async deleteUser(email) { const result=await pool.query("DELETE FROM app_users WHERE email = $1", [email.toLowerCase()]); return result.rowCount>0; },
     async updateUser(email, patch) {
       const current = await this.getUser(email);
       if (!current) return null;

@@ -23,6 +23,7 @@ let child;
 let base;
 let tmpDir;
 let defaultCustomerToken;
+let chefToken;
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -75,6 +76,13 @@ before(async () => {
   await waitForHealth(base);
   const customerRegistration = await fetch(base + "/api/auth/register", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Default Test Customer",email:"default-customer@example.com",phone:"+34 600 000 000",password:"default-customer-password",role:"customer"})});
   defaultCustomerToken = (await customerRegistration.json()).token;
+  const chefRegistration=await fetch(base + "/api/auth/register", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Kitchen Test Chef",email:"kitchen-chef@example.com",phone:"+34 600 000 001",password:"kitchen-chef-password",role:"chef"})});
+  assert.equal(chefRegistration.status,201);
+  const chefApproval=await fetch(base + "/api/admin/staff-applications/kitchen-chef%40example.com", {method:"PATCH",headers:{"Content-Type":"application/json","x-admin-password":ADMIN},body:JSON.stringify({approved:true})});
+  assert.equal(chefApproval.status,200);
+  const chefLogin=await fetch(base+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:"kitchen-chef@example.com",password:"kitchen-chef-password"})});
+  assert.equal(chefLogin.status,200);
+  chefToken=(await chefLogin.json()).token;
   console.log("Testing against:", /Order storage: (.*)/.exec(log)?.[1] || "unknown storage");
 });
 
@@ -96,6 +104,7 @@ const json = (method, url, body, headers = {}) =>
   });
 
 const admin = { "x-admin-password": ADMIN };
+const chefHeaders = () => ({ "Authorization": "Bearer " + (chefToken || "") });
 const customer = { name: "Test Customer", phone: "+34 600 111 222" };
 
 async function placeOrder(overrides = {}) {
@@ -203,7 +212,7 @@ test("kitchen endpoints need the admin password", async () => {
   assert.equal((await fetch(base + "/api/admin/orders")).status, 401);
   assert.equal((await json("GET", "/api/admin/orders", undefined, { "x-admin-password": "wrong" })).status, 401);
   const { data } = await placeOrder();
-  assert.equal((await json("PATCH", "/api/admin/orders/" + data.order.id, { status: "ready" })).status, 401);
+  assert.equal((await json("PATCH", "/api/admin/orders/" + data.order.id, { status: "ready" })).status, 403);
 });
 
 test("kitchen can move an order through every status, and the customer sees it", async () => {
@@ -211,15 +220,15 @@ test("kitchen can move an order through every status, and the customer sees it",
   const id = data.order.id;
 
   for (const status of ["preparing", "ready", "completed"]) {
-    const res = await json("PATCH", "/api/admin/orders/" + id, { status }, admin);
+    const res = await json("PATCH", "/api/admin/orders/" + id, { status }, chefHeaders());
     assert.equal(res.status, 200);
     assert.equal((await res.json()).order.status, status);
     const seen = (await (await fetch(base + "/api/orders/" + id)).json()).order;
     assert.equal(seen.status, status);
   }
 
-  assert.equal((await json("PATCH", "/api/admin/orders/" + id, { status: "bogus" }, admin)).status, 400);
-  assert.equal((await json("PATCH", "/api/admin/orders/SS-NOPE0", { status: "ready" }, admin)).status, 404);
+  assert.equal((await json("PATCH", "/api/admin/orders/" + id, { status: "bogus" }, chefHeaders())).status, 400);
+  assert.equal((await json("PATCH", "/api/admin/orders/SS-NOPE0", { status: "ready" }, chefHeaders())).status, 404);
 });
 
 test("kitchen list shows full details, newest first", async () => {
@@ -260,12 +269,44 @@ test("customers can register and staff need admin approval", async () => {
   assert.equal(staffReg.status,201);
   assert.equal((await json("POST","/api/auth/login",{email:"new-driver@example.com",password:"driver-password-123"})).status,403);
   const pending=await json("GET","/api/admin/staff-applications",undefined,admin);
-  assert.ok((await pending.json()).applications.some(u=>u.email==="new-driver@example.com"));
+  const pendingData=await pending.json();
+  const driverApplication=pendingData.applications.find(u=>u.email==="new-driver@example.com");
+  assert.ok(driverApplication);
+  assert.match(driverApplication.staffId,/^DRV-[A-F0-9]{6}$/);
   const approved=await json("PATCH","/api/admin/staff-applications/new-driver%40example.com",{approved:true},admin);
   assert.equal(approved.status,200);
   const login=await json("POST","/api/auth/login",{email:"new-driver@example.com",password:"driver-password-123"});
   assert.equal(login.status,200);
-  assert.equal((await login.json()).user.role,"driver");
+  const driverUser=(await login.json()).user;
+  assert.equal(driverUser.role,"driver");
+  const byStaffId=await json("POST","/api/auth/login",{email:driverUser.staffId,password:"driver-password-123"});
+  assert.equal(byStaffId.status,200);
+  assert.equal((await byStaffId.json()).user.email,"new-driver@example.com");
+});
+
+
+test("admin can create and remove customer and staff accounts", async () => {
+  const adminLogin=await json("POST","/api/auth/admin-login",{password:ADMIN});
+  assert.equal(adminLogin.status,200);
+  const adminToken=(await adminLogin.json()).token;
+  const adminSession={Authorization:"Bearer "+adminToken};
+  const created=await json("POST","/api/admin/users",{name:"Managed Kitchen",email:"managed-kitchen@example.com",phone:"+34 600 555 111",password:"managed-kitchen-password",role:"chef"},adminSession);
+  assert.equal(created.status,201);
+  const createdUser=(await created.json()).user;
+  assert.match(createdUser.staffId,/^KCH-[A-F0-9]{6}$/);
+  assert.equal(createdUser.approved,true);
+  const listed=await json("GET","/api/admin/users",undefined,adminSession);
+  assert.ok((await listed.json()).users.some(u=>u.email==="managed-kitchen@example.com"));
+  const removed=await json("DELETE","/api/admin/users/managed-kitchen%40example.com",undefined,adminSession);
+  assert.equal(removed.status,200);
+  assert.equal((await json("POST","/api/auth/login",{email:"managed-kitchen@example.com",password:"managed-kitchen-password"})).status,401);
+});
+
+test("only kitchen staff can accept and update orders", async () => {
+  const {data}=await placeOrder();
+  const id=data.order.id;
+  assert.equal((await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},admin)).status,403);
+  assert.equal((await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},chefHeaders())).status,200);
 });
 
 test("unknown API routes return JSON 404", async () => {
@@ -351,7 +392,7 @@ test("driver pickup and customer delivery OTPs are verified separately", async (
   const placed={res:placedRes,data:await placedRes.json()};
   const id=placed.data.order.id;
   assert.equal(placed.res.status,201);
-  await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},admin);
+  await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},chefHeaders());
 
   const driverHeaders={"x-driver-password":DRIVER};
   const preparingJobs=await (await json("GET","/api/driver/orders",undefined,driverHeaders)).json();
@@ -364,7 +405,7 @@ test("driver pickup and customer delivery OTPs are verified separately", async (
 
   const accepted=await json("POST","/api/driver/orders/"+id+"/decision",{decision:"accept"},driverHeaders);
   assert.equal(accepted.status,200);
-  const sent=await json("PATCH","/api/admin/orders/"+id,{status:"out_for_delivery"},admin);
+  const sent=await json("PATCH","/api/admin/orders/"+id,{status:"out_for_delivery"},chefHeaders());
   assert.equal(sent.status,200);
   const adminOrders=(await (await json("GET","/api/admin/orders",undefined,admin)).json()).orders;
   const managed=adminOrders.find(o=>o.id===id);

@@ -29,7 +29,7 @@ const FILTERS = [
 async function api(path, options = {}) {
   const res = await fetch(path, {
     ...options,
-    headers: { "Content-Type": "application/json", "x-admin-password": password, "Authorization": localStorage.getItem("ss_chef_token") ? "Bearer " + localStorage.getItem("ss_chef_token") : "", ...(options.headers || {}) },
+    headers: { "Content-Type": "application/json", "x-admin-password": password, "Authorization": localStorage.getItem("ss_chef_token") ? "Bearer " + localStorage.getItem("ss_chef_token") : (localStorage.getItem("ss_admin_token") ? "Bearer " + localStorage.getItem("ss_admin_token") : ""), ...(options.headers || {}) },
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401) throw Object.assign(new Error(data.error || "Unauthorized"), { auth: true });
@@ -52,14 +52,17 @@ function showBoard() {
   $("#board").hidden = false;
   $("#logout").hidden = false;
   const chefOnly = !!localStorage.getItem("ss_chef_token");
+  const adminOnly = !!localStorage.getItem("ss_admin_token") || !!password;
   const approvalsButton = $('#kitchenNav [data-section="staffApprovals"]');
   if (approvalsButton) approvalsButton.hidden = chefOnly;
+  ['stockPanel','menuPanel'].forEach(id=>{const button=$('#kitchenNav [data-section="'+id+'"]');if(button)button.hidden=chefOnly;});
+  const adminLink=$("#adminUsersLink");if(adminLink)adminLink.hidden=chefOnly;
   if (chefOnly && activeSection === "staffApprovals") activeSection = "ordersPanel";
   showSection(activeSection);
 }
 
 function showSection(sectionId) {
-  const allowed = ["ordersPanel", "stockPanel", "menuPanel", "staffApprovals"];
+  const allowed = localStorage.getItem("ss_chef_token") ? ["ordersPanel"] : ["ordersPanel", "stockPanel", "menuPanel", "staffApprovals"];
   if (!allowed.includes(sectionId)) sectionId = "ordersPanel";
   if (sectionId === "staffApprovals" && localStorage.getItem("ss_chef_token")) sectionId = "ordersPanel";
   activeSection = sectionId;
@@ -197,7 +200,7 @@ function timeAgo(iso) {
 function nextAction(o) {
   const delivery = o.type === "delivery";
   return {
-    received: { to: "preparing", label: "Start preparing" },
+    received: { to: "preparing", label: "Accept order · start preparing" },
     preparing: { to: delivery ? "out_for_delivery" : "ready", label: delivery ? "Out for delivery · generate OTPs" : "Mark ready" },
     ready: { to: "completed", label: o.type === "eat_here" ? "Mark served" : "Mark picked up" },
   }[o.status];
@@ -230,6 +233,7 @@ function render() {
     .map((o) => {
       const act = nextAction(o);
       const final = !ACTIVE.includes(o.status);
+      const kitchenCanUpdate = !!localStorage.getItem("ss_chef_token");
       return `<article class="o-card ${esc(o.status)}" data-id="${esc(o.id)}">
         <div class="o-head"><span class="o-id">${esc(o.id)}</span><span class="o-time">${esc(timeAgo(o.createdAt))}</span></div>
         <div>
@@ -254,8 +258,8 @@ function render() {
         <div class="o-notes">Payment: <strong>${o.paymentReceived ? "RECEIVED ✓" : "NOT RECEIVED"}</strong> · <button class="link-btn" data-payment="${o.paymentReceived ? "false" : "true"}">${o.paymentReceived ? "Mark not received" : "Mark received"}</button></div>
         ${o.status === "out_for_delivery" || o.status === "picked_up" ? `<div class="o-notes"><strong>Handover codes — manager only</strong><br>Pickup code: <strong>${esc(o.pickupOtp || "Already confirmed")}</strong><br>Customer delivery code: <strong>${esc(o.deliveryOtp || "Already confirmed")}</strong><br><small>Share the pickup code with the driver and the delivery code with the customer. Never show the customer code to the driver.</small></div>` : ""}
         <div class="o-actions">
-          ${act ? `<button class="btn primary" data-set="${act.to}">${esc(act.label)}</button>` : ""}
-          ${final ? `<button class="btn" data-set="received">Reopen</button>` : `<button class="btn danger" data-set="cancelled">Cancel</button>`}
+          ${act && kitchenCanUpdate ? `<button class="btn primary" data-set="${act.to}">${esc(act.label)}</button>` : ""}
+          ${kitchenCanUpdate ? (final ? `<button class="btn" data-set="received">Reopen</button>` : `<button class="btn danger" data-set="cancelled">Cancel</button>`) : ""}
         </div>
       </article>`;
     })
@@ -296,7 +300,7 @@ async function boot() {
         const r=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password})});
         const d=await r.json();
         if(!r.ok) throw new Error(d.error||"Login failed.");
-        if(d.user.role!=="chef") throw new Error("This account is not an approved chef account.");
+        if(d.user.role!=="chef") throw new Error("This account is not an approved kitchen staff account.");
         localStorage.setItem("ss_chef_token",d.token); password="";
       }catch(ex){showLogin(ex.message);return;}
     }else{sessionStorage.setItem("ss_admin",password);}
@@ -306,6 +310,7 @@ async function boot() {
   $("#logout").addEventListener("click", () => {
     sessionStorage.removeItem("ss_admin");
     localStorage.removeItem("ss_chef_token");
+    localStorage.removeItem("ss_admin_token");
     password = "";
     $("#pw").value = "";
     showLogin();
@@ -378,7 +383,7 @@ async function boot() {
     setStatus(b.closest(".o-card").dataset.id, b.dataset.set);
   });
 
-  if (password || localStorage.getItem("ss_chef_token")) load();
+  if (password || localStorage.getItem("ss_chef_token") || localStorage.getItem("ss_admin_token")) load();
   else showLogin();
 }
 
