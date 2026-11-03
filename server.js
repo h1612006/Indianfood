@@ -266,19 +266,27 @@ app.post("/api/auth/logout", (req,res) => { sessions.delete(String(req.get("auth
 /* ---------- admin ---------- */
 
 function requireAdmin(req, res, next) {
+  if (req.user && req.user.role === "chef" && req.user.approved) return next();
   const given = Buffer.from(String(req.get("x-admin-password") || ""));
   const real = Buffer.from(ADMIN_PASSWORD || "");
   const ok = given.length === real.length && crypto.timingSafeEqual(given, real);
-  if (!ok) return res.status(401).json({ error: "Wrong admin password." });
+  if (!ok) return res.status(401).json({ error: "Use an approved chef account or the admin password." });
+  next();
+}
+function requireSuperAdmin(req,res,next) {
+  const given=Buffer.from(String(req.get("x-admin-password")||""));
+  const real=Buffer.from(ADMIN_PASSWORD||"");
+  const ok=given.length===real.length&&crypto.timingSafeEqual(given,real);
+  if(!ok) return res.status(401).json({error:"Only the admin can approve staff applications."});
   next();
 }
 
 
-app.get("/api/admin/staff-applications", requireAdmin, wrap(async (_req,res) => {
+app.get("/api/admin/staff-applications", requireSuperAdmin, wrap(async (_req,res) => {
   const applications=(await store.listUsers()).filter(u=>["chef","driver"].includes(u.role)&&!u.approved).map(({passwordHash,passwordSalt,...u})=>u);
   res.json({applications});
 }));
-app.patch("/api/admin/staff-applications/:email", requireAdmin, wrap(async (req,res) => {
+app.patch("/api/admin/staff-applications/:email", requireSuperAdmin, wrap(async (req,res) => {
   const email=decodeURIComponent(req.params.email).toLowerCase(), approved=req.body&&req.body.approved;
   if(typeof approved!=="boolean") throw new UserError("Choose approve or reject.");
   const user=await store.getUser(email);
