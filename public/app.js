@@ -508,7 +508,7 @@ const STEP_LABELS = {
   delivery: ["Received", "Preparing", "On its way", "Delivered"],
 };
 const STEP_ICONS = ["📝", "👨‍🍳", "🛍️", "✅"];
-const STATUS_INDEX = { received: 0, preparing: 1, ready: 2, completed: 3 };
+const STATUS_INDEX = { received: 0, preparing: 1, ready: 2, out_for_delivery: 2, picked_up: 2, completed: 3 };
 
 function headline(order) {
   const d = order.type === "delivery";
@@ -516,6 +516,8 @@ function headline(order) {
     received: "We've got your order!",
     preparing: "Your food is on the grill 🔥",
     ready: d ? "Your order is on its way 🛵" : "Ready for pickup! 🎉",
+    out_for_delivery: "Your order is on its way 🛵",
+    picked_up: "Your driver has your order 🛵",
     completed: d ? "Delivered — enjoy! 😋" : "Picked up — enjoy! 😋",
     cancelled: "This order was cancelled",
   }[order.status];
