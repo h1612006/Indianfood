@@ -306,7 +306,6 @@ test("admin can create and remove customer and staff accounts", async () => {
   assert.equal("passwordHash" in createdUser,false);
   assert.equal("passwordSalt" in createdUser,false);
   assert.equal("emailOtpHash" in createdUser,false);
-  await json("POST","/api/auth/verify-email",{email:"managed-kitchen@example.com",code:createdData.testCode});
   const listed=await json("GET","/api/admin/users",undefined,adminSession);
   const listedUsers=(await listed.json()).users;
   const managed=listedUsers.find(u=>u.email==="managed-kitchen@example.com");
