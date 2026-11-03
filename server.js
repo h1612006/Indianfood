@@ -290,7 +290,7 @@ app.post("/api/auth/register", wrap(async (req,res) => {
   const address = clean(req.body.address,200);
   const password = String(req.body.password || "");
   const role = req.body.role || "customer";
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || !name || password.length < 10) throw new UserError("Enter a valid email, your name and a password of at least 10 characters.");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !name || password.length < 10) throw new UserError("Enter a valid email, your name and a password of at least 10 characters.");
   if (!["customer","chef","driver"].includes(role)) throw new UserError("Choose customer, chef or driver.");
   const salt = crypto.randomBytes(16).toString("hex");
   const user = {email,name,phone,address,role,staffId:role==="chef"?"KCH-"+crypto.randomBytes(3).toString("hex").toUpperCase():role==="driver"?"DRV-"+crypto.randomBytes(3).toString("hex").toUpperCase():null,approved:role==="customer",status:role==="customer"?"approved":"pending",emailVerified:false,passwordSalt:salt,passwordHash:crypto.scryptSync(password,salt,64).toString("hex"),createdAt:new Date().toISOString()};
@@ -335,7 +335,7 @@ app.post("/api/auth/verify-email", wrap(async (req,res) => {
     if(!user.approved) return res.status(403).json({error:"Email verified. Your staff account is awaiting admin approval.",verified:true});
     const token=crypto.randomBytes(32).toString("hex"), safe=safeUser(user); sessions.set(token,safe); return res.json({token,user:safe});
   }
-  if(!/^\\d{6}$/.test(code) || !user.emailOtpHash || !user.emailOtpExpiresAt || Date.parse(user.emailOtpExpiresAt)<=Date.now()) return res.status(400).json({error:"That code is invalid or expired. Request a new one."});
+  if(!/^\d{6}$/.test(code) || !user.emailOtpHash || !user.emailOtpExpiresAt || Date.parse(user.emailOtpExpiresAt)<=Date.now()) return res.status(400).json({error:"That code is invalid or expired. Request a new one."});
   if(Number(user.emailOtpAttempts||0)>=5) return res.status(429).json({error:"Too many incorrect attempts. Request a new code."});
   const expected=Buffer.from(user.emailOtpHash), actual=Buffer.from(otpHash(email,code));
   if(expected.length!==actual.length || !crypto.timingSafeEqual(expected,actual)) {
@@ -410,7 +410,7 @@ app.post("/api/admin/users", requireAdmin, wrap(async (req,res) => {
   const email=clean(req.body.email,160).toLowerCase(), name=clean(req.body.name,80);
   const phone=clean(req.body.phone,30), address=clean(req.body.address,200);
   const password=String(req.body.password||""), role=req.body.role;
-  if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||!name||password.length<10) throw new UserError("Enter a valid email, name and password of at least 10 characters.");
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!name||password.length<10) throw new UserError("Enter a valid email, name and password of at least 10 characters.");
   if(!["customer","chef","driver"].includes(role)) throw new UserError("Choose customer, kitchen staff or driver.");
   const salt=crypto.randomBytes(16).toString("hex");
   const user={email,name,phone,address,role,staffId:role==="chef"?"KCH-"+crypto.randomBytes(3).toString("hex").toUpperCase():role==="driver"?"DRV-"+crypto.randomBytes(3).toString("hex").toUpperCase():null,approved:true,status:"approved",emailVerified:false,passwordSalt:salt,passwordHash:crypto.scryptSync(password,salt,64).toString("hex"),createdAt:new Date().toISOString(),createdBy:"admin"};
