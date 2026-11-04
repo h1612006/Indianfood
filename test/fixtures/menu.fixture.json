@@ -403,7 +403,8 @@
       ],
       "sizes": "standard",
       "removals": [],
-      "addons": []
+      "addons": [],
+      "spice": false
     },
     {
       "id": "mango-shake",
@@ -424,7 +425,8 @@
           "name": "Whipped cream",
           "price": 0.5
         }
-      ]
+      ],
+      "spice": false
     },
     {
       "id": "chocolate-shake",
@@ -445,7 +447,8 @@
           "name": "Whipped cream",
           "price": 0.5
         }
-      ]
+      ],
+      "spice": false
     },
     {
       "id": "nimbu-pani",
@@ -460,7 +463,8 @@
       ],
       "sizes": "standard",
       "removals": [],
-      "addons": []
+      "addons": [],
+      "spice": false
     },
     {
       "id": "cola",
@@ -475,7 +479,8 @@
       ],
       "sizes": "standard",
       "removals": [],
-      "addons": []
+      "addons": [],
+      "spice": false
     },
     {
       "id": "water",
@@ -489,7 +494,8 @@
         "veg"
       ],
       "removals": [],
-      "addons": []
+      "addons": [],
+      "spice": false
     },
     {
       "id": "gulab-brownie",
@@ -509,7 +515,8 @@
           "name": "Scoop of vanilla ice cream",
           "price": 1.2
         }
-      ]
+      ],
+      "spice": false
     },
     {
       "id": "kulfi-cone",
@@ -523,8 +530,39 @@
         "veg"
       ],
       "removals": [],
-      "addons": []
+      "addons": [],
+      "spice": false
     }
   ],
-  "cardPaymentDemo": true
+  "spiceLevels": [
+    {
+      "id": "mid",
+      "name": "Mid"
+    },
+    {
+      "id": "high",
+      "name": "High"
+    },
+    {
+      "id": "super-high",
+      "name": "Super high"
+    }
+  ],
+  "paymentMethods": [
+    {
+      "id": "cash",
+      "name": "Cash",
+      "emoji": "💶"
+    },
+    {
+      "id": "card",
+      "name": "Card",
+      "emoji": "💳"
+    },
+    {
+      "id": "bizum",
+      "name": "Bizum",
+      "emoji": "📱"
+    }
+  ]
 }

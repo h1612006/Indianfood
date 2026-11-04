@@ -6,7 +6,10 @@ const esc = (s) =>
 
 let password = sessionStorage.getItem("ss_admin") || "";
 let orders = [];
+let menu = null; // the menu incl. which items are out of stock
+let tab = "orders";
 let filter = "active";
+let stockFilter = "all";
 let currency = "€";
 let timer = null;
 let knownIds = new Set();
@@ -31,9 +34,13 @@ async function api(path, options = {}) {
   return data;
 }
 
+/* ---------- login / layout ---------- */
+
 function showLogin(msg) {
   clearTimeout(timer);
   $("#board").hidden = true;
+  $("#stockBoard").hidden = true;
+  $("#tabs").hidden = true;
   $("#logout").hidden = true;
   $("#loginBox").hidden = false;
   const e = $("#loginErr");
@@ -41,19 +48,32 @@ function showLogin(msg) {
   e.textContent = msg || "";
 }
 
-function showBoard() {
+function showApp() {
   $("#loginBox").hidden = true;
-  $("#board").hidden = false;
   $("#logout").hidden = false;
+  $("#tabs").hidden = false;
+  $("#board").hidden = tab !== "orders";
+  $("#stockBoard").hidden = tab !== "stock";
+  document.querySelectorAll(".a-tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+}
+
+/* ---------- loading ---------- */
+
+async function loadMenu() {
+  const res = await fetch("/api/menu", { cache: "no-store" });
+  if (!res.ok) throw new Error("Could not load the menu");
+  menu = await res.json();
+  currency = menu.currency || currency;
 }
 
 async function load() {
   clearTimeout(timer);
   try {
-    const data = await api("/api/admin/orders");
+    const [data] = await Promise.all([api("/api/admin/orders"), loadMenu()]);
     orders = data.orders;
-    showBoard();
+    showApp();
     $("#boardErr").hidden = true;
+    $("#stockErr").hidden = true;
 
     const newOnes = orders.filter((o) => !knownIds.has(o.id));
     if (!firstLoad && newOnes.length) beep();
@@ -61,6 +81,7 @@ async function load() {
     firstLoad = false;
 
     render();
+    renderStock();
   } catch (ex) {
     if (ex.auth) {
       sessionStorage.removeItem("ss_admin");
@@ -68,8 +89,10 @@ async function load() {
       showLogin(ex.message);
       return;
     }
-    $("#boardErr").textContent = "Connection problem — retrying… (" + ex.message + ")";
-    $("#boardErr").hidden = false;
+    for (const id of ["#boardErr", "#stockErr"]) {
+      $(id).textContent = "Connection problem — retrying… (" + ex.message + ")";
+      $(id).hidden = false;
+    }
   }
   timer = setTimeout(load, 5000);
 }
@@ -100,6 +123,16 @@ function timeAgo(iso) {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function payLabel(o) {
+  const m = menu && (menu.paymentMethods || []).find((x) => x.id === o.payment);
+  if (m) return (m.emoji ? m.emoji + " " : "") + m.name;
+  return o.payment; // older orders
+}
+
+function spiceClass(name) {
+  return String(name).toLowerCase().replace(/[^a-z]+/g, "-");
+}
+
 function nextAction(o) {
   const delivery = o.type === "delivery";
   return {
@@ -108,6 +141,8 @@ function nextAction(o) {
     ready: { to: "completed", label: delivery ? "Mark delivered" : "Mark picked up" },
   }[o.status];
 }
+
+/* ---------- orders tab ---------- */
 
 function render() {
   const counts = {
@@ -120,6 +155,7 @@ function render() {
       (f) => `<button class="cat-tab ${filter === f.id ? "active" : ""}" data-filter="${f.id}">${f.label} (${counts[f.id]})</button>`
     ).join("") + `<span class="status-line">Auto-refreshing every 5s</span>`;
 
+  $("#tabOrders").textContent = counts.active ? `Orders (${counts.active} active)` : "Orders";
   document.title = counts.active ? `(${counts.active}) Kitchen screen` : "Kitchen screen";
 
   const shown = orders
@@ -128,7 +164,7 @@ function render() {
     .sort((a, b) => (filter === "active" ? new Date(a.createdAt) - new Date(b.createdAt) : 0));
 
   if (!shown.length) {
-    $("#orders").innerHTML = `<div class="empty-a" style="grid-column:1/-1">No ${filter === "all" ? "" : filter + " "}orders right now. 🍔</div>`;
+    $("#orders").innerHTML = `<div class="empty-a" style="grid-column:1/-1">No ${filter === "all" ? "" : filter + " "}orders right now. 🍽️</div>`;
     return;
   }
 
@@ -141,7 +177,7 @@ function render() {
         <div>
           <span class="o-pill ${esc(o.type)}">${o.type === "delivery" ? "🛵 Delivery" : "🏪 Pickup"}</span>
           <span class="o-pill">${esc(o.status)}</span>
-          <span class="o-pill">${o.payment === "card" ? "Card (demo)" : "Pay " + (o.type === "delivery" ? "on delivery" : "at counter")}</span>
+          <span class="o-pill pay">${esc(payLabel(o))}</span>
         </div>
         <div class="o-cust">
           <strong>${esc(o.customer.name)}</strong> · ${esc(o.customer.phone)}
@@ -151,7 +187,9 @@ function render() {
           ${o.items
             .map((l) => {
               const extra = [l.unit, l.size, ...l.addons.map((a) => "+ " + a), ...l.removed.map((r) => "NO " + r.toUpperCase())].filter(Boolean);
-              return `<div class="l"><strong>${l.qty}×</strong> ${esc(l.name)}${extra.length ? `<span class="m">${extra.map(esc).join(" · ")}</span>` : ""}</div>`;
+              return `<div class="l"><strong>${l.qty}×</strong> ${esc(l.name)}${
+                l.spice ? `<span class="spice-pill ${esc(spiceClass(l.spice))}">🌶 ${esc(l.spice)}</span>` : ""
+              }${extra.length ? `<span class="m">${extra.map(esc).join(" · ")}</span>` : ""}</div>`;
             })
             .join("")}
         </div>
@@ -176,14 +214,67 @@ async function setStatus(id, status) {
   }
 }
 
-async function boot() {
-  // The menu file tells us which currency symbol to show.
-  try {
-    currency = (await (await fetch("/api/menu")).json()).currency || currency;
-  } catch (_) {
-    /* keep default */
-  }
+/* ---------- menu & stock tab ---------- */
 
+function stockRow(i) {
+  const out = !!i.soldOut;
+  const thumb = i.image
+    ? `<img class="s-thumb" src="${esc(i.image)}" alt="" loading="lazy">`
+    : `<span class="s-thumb" aria-hidden="true">${esc(i.emoji || "🍽️")}</span>`;
+  return `<div class="s-row${out ? " out" : ""}" data-id="${esc(i.id)}">
+    ${thumb}
+    <div class="s-info"><strong>${esc(i.name)}</strong><span>${money(i.price)}${i.unit ? " · " + esc(i.unit) : ""}</span></div>
+    <span class="s-pill ${out ? "out" : "in"}">${out ? "Out of stock" : "In stock"}</span>
+    <button class="btn ${out ? "good" : "danger"}" data-stock="${out ? "in" : "out"}">${out ? "Back in stock" : "Mark out of stock"}</button>
+  </div>`;
+}
+
+function renderStock() {
+  if (!menu) return;
+  const outCount = menu.items.filter((i) => i.soldOut).length;
+  $("#tabStock").textContent = outCount ? `Menu & stock (${outCount} out)` : "Menu & stock";
+
+  $("#stockFilters").innerHTML = [
+    { id: "all", label: `All (${menu.items.length})` },
+    { id: "out", label: `Out of stock (${outCount})` },
+  ]
+    .map((f) => `<button class="cat-tab ${stockFilter === f.id ? "active" : ""}" data-sfilter="${f.id}">${f.label}</button>`)
+    .join("");
+  $("#stockSummary").textContent = outCount
+    ? `${outCount} item${outCount === 1 ? "" : "s"} out of stock — customers can see them but cannot order them.`
+    : "Everything is in stock.";
+  $("#resetStock").hidden = outCount === 0;
+
+  const sections = menu.categories
+    .map((c) => {
+      const items = menu.items.filter((i) => i.category === c.id && (stockFilter === "all" || i.soldOut));
+      if (!items.length) return "";
+      return `<h3 class="s-cat">${esc(c.emoji || "")} ${esc(c.name)}</h3><div class="s-list">${items.map(stockRow).join("")}</div>`;
+    })
+    .join("");
+  $("#stockList").innerHTML = sections || `<div class="empty-a">No items out of stock. 🎉</div>`;
+}
+
+async function setStock(id, soldOut) {
+  // Show the change straight away; the server answer (or an error) follows.
+  const item = menu && menu.items.find((i) => i.id === id);
+  if (item) {
+    item.soldOut = soldOut;
+    renderStock();
+  }
+  try {
+    await api("/api/admin/items/" + encodeURIComponent(id), { method: "PATCH", body: JSON.stringify({ soldOut }) });
+    load();
+  } catch (ex) {
+    if (item) item.soldOut = !soldOut;
+    renderStock();
+    alert(ex.message);
+  }
+}
+
+/* ---------- start ---------- */
+
+function boot() {
   $("#loginForm").addEventListener("submit", (e) => {
     e.preventDefault();
     password = $("#pw").value;
@@ -200,6 +291,13 @@ async function boot() {
     showLogin();
   });
 
+  $("#tabs").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-tab]");
+    if (!b) return;
+    tab = b.dataset.tab;
+    showApp();
+  });
+
   $("#filters").addEventListener("click", (e) => {
     const b = e.target.closest("[data-filter]");
     if (b) {
@@ -212,6 +310,30 @@ async function boot() {
     const b = e.target.closest("[data-set]");
     if (!b) return;
     setStatus(b.closest(".o-card").dataset.id, b.dataset.set);
+  });
+
+  $("#stockFilters").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-sfilter]");
+    if (b) {
+      stockFilter = b.dataset.sfilter;
+      renderStock();
+    }
+  });
+
+  $("#stockList").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-stock]");
+    if (!b) return;
+    setStock(b.closest(".s-row").dataset.id, b.dataset.stock === "out");
+  });
+
+  $("#resetStock").addEventListener("click", async () => {
+    if (!confirm("Put every item back in stock?")) return;
+    try {
+      await api("/api/admin/items-reset-stock", { method: "POST", body: "{}" });
+      load();
+    } catch (ex) {
+      alert(ex.message);
+    }
   });
 
   if (password) load();

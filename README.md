@@ -10,7 +10,10 @@ An online ordering app for an Indian snacks shop: customers browse the menu with
 - Up to 100 of any item per order
 - Basket with quantity controls, saved between visits
 - Pickup or delivery, with a delivery fee, a free-delivery threshold and a minimum order
-- Checkout with name, phone, address (delivery) and kitchen notes
+- Spice level on every snack: Mid, High or Super high (default Mid)
+- Checkout with name, phone, address (delivery), kitchen notes and a payment choice: Cash, Card or Bizum. Nothing is charged online; the customer pays at pickup or delivery
+- Items marked out of stock stay visible with an "Out of stock" badge and show a notice when tapped, but cannot be ordered (the server also refuses them)
+- Festival-style design: marigold garland, floating dish plates, full-size photos
 - Live order tracker (Received → Preparing → Ready / On its way → Done) that updates by itself
 - Works on phones and desktops
 
@@ -19,6 +22,8 @@ An online ordering app for an Indian snacks shop: customers browse the menu with
 - Live board of orders, refreshed every 5 seconds, with a beep for new orders
 - One-tap status buttons, cancel and reopen
 - Active / Done / All filters
+- Each order shows payment method and the spice level of every item
+- **Menu & stock** tab: list of all items with an *Out of stock* / *Back in stock* button each, plus "Everything back in stock". Saved in the database, so it survives restarts
 
 **Security basics**
 - Prices are always calculated on the server; anything the browser sends about price is ignored
@@ -146,7 +151,8 @@ One item looks like this:
 - `unit` is optional text shown after the price ("per piece", "per box", "20 pieces", "250 g").
 - `image` is optional. Without it the `emoji` is shown instead. Put the photo in `public/img/` (a square JPG around 500 px keeps the page fast).
 - Optional extras: `"sizes": "standard"` (sizes are defined once under `sizes`), `"addons": [{"id","name","price"}]`, and `"removals": ["Onions"]`.
-- `"cardPaymentDemo": true` shows a fake "Card" option (nothing is charged). Leave it `false` until real payments are added.
+- `spiceLevels` (top of the file) sets the spice choices; add `{"id":"mild","name":"Mild"}` for a fourth. An item with `"spice": false` has no spice choice.
+- `paymentMethods` sets Cash / Card / Bizum. Put your Bizum phone number in `"bizumNumber"` and customers see it at checkout.
 - Run `npm test` after editing: it checks every item for a missing name, bad price, unknown category or missing photo.
 
 ## Project structure

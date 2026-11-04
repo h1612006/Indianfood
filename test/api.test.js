@@ -96,7 +96,7 @@ const customer = { name: "Test Customer", phone: "+34 600 111 222" };
 async function placeOrder(overrides = {}) {
   const res = await json("POST", "/api/orders", {
     type: "pickup",
-    payment: "counter",
+    payment: "cash",
     customer,
     items: [{ itemId: "classic-smash", qty: 1 }],
     ...overrides,
@@ -248,4 +248,116 @@ test("unknown API routes return JSON 404", async () => {
   const res = await fetch(base + "/api/does-not-exist");
   assert.equal(res.status, 404);
   assert.equal((await res.json()).error, "Not found.");
+});
+
+/* ---------- spice levels ---------- */
+
+test("spice level: defaults to the first level, saves the chosen one, rejects unknown ones", async () => {
+  const plain = (await placeOrder({ items: [{ itemId: "classic-smash", qty: 1 }] })).data.order;
+  assert.equal(plain.items[0].spice, "Mid");
+
+  const hot = (await placeOrder({ items: [{ itemId: "classic-smash", qty: 1, spice: "super-high" }] })).data.order;
+  assert.equal(hot.items[0].spice, "Super high");
+
+  // the same snack at two spice levels stays as two separate lines
+  const two = (
+    await placeOrder({
+      items: [
+        { itemId: "classic-smash", qty: 1, spice: "high" },
+        { itemId: "classic-smash", qty: 1, spice: "mid" },
+      ],
+    })
+  ).data.order;
+  assert.deepEqual(two.items.map((l) => l.spice), ["High", "Mid"]);
+
+  const bad = await placeOrder({ items: [{ itemId: "classic-smash", qty: 1, spice: "nuclear" }] });
+  assert.equal(bad.res.status, 400);
+  assert.match(bad.data.error, /spice level/i);
+});
+
+test("items that opt out of spice levels get none", async () => {
+  const { data } = await placeOrder({ items: [{ itemId: "cola", qty: 1, spice: "high" }] });
+  assert.equal(data.order.items[0].spice, null);
+});
+
+/* ---------- payment methods ---------- */
+
+test("payment: cash, card and bizum are accepted and saved; anything else is refused", async () => {
+  for (const method of ["cash", "card", "bizum"]) {
+    const { res, data } = await placeOrder({ payment: method });
+    assert.equal(res.status, 201, method);
+    assert.equal(data.order.payment, method);
+  }
+  for (const bad of ["counter", "paypal", "", undefined, 5]) {
+    const { res, data } = await placeOrder({ payment: bad });
+    assert.equal(res.status, 400, String(bad));
+    assert.match(data.error, /how you will pay/i);
+  }
+  const menu = await (await fetch(base + "/api/menu")).json();
+  assert.deepEqual(menu.paymentMethods.map((m) => m.id), ["cash", "card", "bizum"]);
+});
+
+/* ---------- out of stock ---------- */
+
+const menuNow = async () => (await fetch(base + "/api/menu")).json();
+const setStock = (id, soldOut, headers = admin) => json("PATCH", "/api/admin/items/" + id, { soldOut }, headers);
+
+test("out of stock: customers still see the item, cannot order it, and it comes back when restocked", async () => {
+  try {
+    assert.equal((await menuNow()).items.every((i) => i.soldOut === false), true, "everything starts in stock");
+
+    const res = await setStock("classic-smash", true);
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { id: "classic-smash", soldOut: true });
+
+    const menu = await menuNow();
+    const item = menu.items.find((i) => i.id === "classic-smash");
+    assert.ok(item, "the item is still on the menu");
+    assert.equal(item.soldOut, true);
+    assert.equal(menu.items.filter((i) => i.soldOut).length, 1, "only that item is out");
+
+    // ordering it is refused, with a message the customer can read
+    const blocked = await placeOrder({ items: [{ itemId: "classic-smash", qty: 1 }] });
+    assert.equal(blocked.res.status, 400);
+    assert.match(blocked.data.error, /Classic Smash is out of stock/);
+
+    // one sold-out item in a mixed basket refuses the whole order (nothing half-saved)
+    const mixed = await placeOrder({ items: [{ itemId: "water", qty: 1 }, { itemId: "classic-smash", qty: 1 }] });
+    assert.equal(mixed.res.status, 400);
+
+    // other items still work
+    assert.equal((await placeOrder({ items: [{ itemId: "water", qty: 1 }] })).res.status, 201);
+
+    // two out of stock -> plural message
+    await setStock("water", true);
+    const two = await placeOrder({ items: [{ itemId: "water", qty: 1 }, { itemId: "classic-smash", qty: 1 }] });
+    assert.match(two.data.error, /are out of stock/);
+
+    // back in stock
+    assert.equal((await setStock("classic-smash", false)).status, 200);
+    assert.equal((await menuNow()).items.find((i) => i.id === "classic-smash").soldOut, false);
+    assert.equal((await placeOrder({ items: [{ itemId: "classic-smash", qty: 1 }] })).res.status, 201);
+  } finally {
+    await json("POST", "/api/admin/items-reset-stock", {}, admin);
+  }
+});
+
+test("out of stock: only the kitchen can change it, and bad requests are refused", async () => {
+  assert.equal((await setStock("water", true, {})).status, 401);
+  assert.equal((await setStock("water", true, { "x-admin-password": "wrong" })).status, 401);
+  assert.equal((await menuNow()).items.find((i) => i.id === "water").soldOut, false, "unchanged");
+
+  assert.equal((await setStock("no-such-item", true)).status, 404);
+  assert.equal((await json("PATCH", "/api/admin/items/water", { soldOut: "yes" }, admin)).status, 400);
+  assert.equal((await json("PATCH", "/api/admin/items/water", {}, admin)).status, 400);
+  assert.equal((await json("POST", "/api/admin/items-reset-stock", {}, {})).status, 401);
+});
+
+test("out of stock: 'everything back in stock' clears all, and stock answers are never cached", async () => {
+  await setStock("water", true);
+  await setStock("cola", true);
+  assert.equal((await menuNow()).items.filter((i) => i.soldOut).length, 2);
+  assert.equal((await json("POST", "/api/admin/items-reset-stock", {}, admin)).status, 200);
+  assert.equal((await menuNow()).items.filter((i) => i.soldOut).length, 0);
+  assert.match((await fetch(base + "/api/menu")).headers.get("cache-control"), /no-store/);
 });

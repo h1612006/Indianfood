@@ -5,12 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
   <title>Kitchen screen</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;600;700;800&family=Yatra+One&display=swap">
   <link rel="stylesheet" href="styles.css">
   <style>
     body { background: #1f1613; color: #fff; }
     .a-top { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: #2b1d18; border-bottom: 1px solid #44302a; position: sticky; top: 0; z-index: 10; }
     .a-top h1 { font-size: 20px; }
     .a-top a { color: var(--yellow); }
+    .a-tabs { display: flex; gap: 8px; padding: 10px 16px 0; max-width: 1200px; margin: 0 auto; }
+    .a-tab { font: inherit; font-weight: 800; padding: 10px 18px; border-radius: 999px; border: 2px solid #44302a; background: #2b1d18; color: #fff; cursor: pointer; }
+    .a-tab.active { background: var(--yellow); color: var(--ink); border-color: var(--yellow); }
     .a-wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
     .login { max-width: 360px; margin: 12vh auto; background: #2b1d18; padding: 24px; border-radius: 18px; }
     .login h2 { margin-bottom: 12px; }
@@ -31,17 +37,64 @@
     .o-pill { display: inline-block; font-size: 11px; font-weight: 800; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; background: #44302a; }
     .o-pill.delivery { background: #1c4e80; }
     .o-pill.pickup { background: #5c3b8a; }
+    .o-pill.pay { background: #1f5c3a; }
     .o-cust { font-size: 14px; color: #e6d8cf; }
     .o-items { border-top: 1px dashed #5a443b; border-bottom: 1px dashed #5a443b; padding: 8px 0; font-size: 14px; }
     .o-items .l { margin-bottom: 6px; }
     .o-items .m { color: #b9a79d; font-size: 12px; display: block; }
+    .spice-pill { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 900; background: #7a2a12; color: #ffd9c9; }
+    .spice-pill.high { background: #b3320f; color: #fff; }
+    .spice-pill.super-high { background: #d62828; color: #fff; box-shadow: 0 0 0 2px #ffd0d0; }
     .o-notes { background: #44302a; border-radius: 10px; padding: 8px 10px; font-size: 13px; }
     .o-foot { display: flex; justify-content: space-between; font-weight: 900; }
     .o-actions { display: flex; gap: 8px; }
     .o-actions .btn { flex: 1; padding: 10px; font-size: 14px; }
     .btn.danger { background: transparent; color: #ff8787; border: 2px solid #ff8787; flex: 0 0 auto; }
+    .btn.good { background: #2f9e44; color: #fff; }
     .empty-a { text-align: center; color: #b9a79d; padding: 60px 10px; }
     .a-error { background: #5b1a22; color: #ffd6da; padding: 10px 12px; border-radius: 10px; margin-bottom: 12px; }
+
+    /* Menu & stock */
+    .s-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+    .s-head .grow { flex: 1; color: #b9a79d; font-size: 14px; }
+    .s-cat { margin: 18px 0 8px; font-size: 18px; }
+    .s-list { display: grid; gap: 8px; }
+    .s-row { display: grid; grid-template-columns: 56px 1fr auto auto; gap: 12px; align-items: center; background: #2b1d18; border: 2px solid #44302a; border-radius: 14px; padding: 8px 12px 8px 8px; }
+    .s-row.out { border-color: #b00020; }
+    .s-thumb { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; background: #44302a; display: grid; place-items: center; font-size: 28px; }
+    .s-row.out .s-thumb { filter: grayscale(1); opacity: .6; }
+    .s-info strong { display: block; font-size: 16px; }
+    .s-info span { color: #b9a79d; font-size: 13px; }
+    .s-pill { font-size: 12px; font-weight: 800; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+    .s-pill.in { background: #1f5c3a; color: #c9f3d6; }
+    .s-pill.out { background: #b00020; color: #fff; }
+    .s-row .btn { padding: 10px 14px; font-size: 14px; white-space: nowrap; }
+    @media (max-width: 560px) {
+      .s-row { grid-template-columns: 56px 1fr; }
+      .s-row .s-pill { justify-self: start; grid-column: 2; }
+      .s-row .btn { grid-column: 1 / -1; }
+    }
+
+    /* Kitchen theme */
+    body { background: #1a0a0f radial-gradient(700px 300px at 90% -5%, rgba(245,167,0,.12), transparent 70%) no-repeat; }
+    .a-top { background: var(--maroon); border-bottom: 3px solid var(--marigold); }
+    .a-top h1 { font-family: var(--display); font-weight: 400; font-size: 24px; color: var(--marigold); }
+    .a-tab { background: #2a1119; border-color: #4b2330; transition: transform .1s; }
+    .a-tab:hover { transform: translateY(-1px); }
+    .a-tab.active { background: var(--marigold); border-color: var(--marigold); }
+    .o-card, .s-row, .login { background: #2a1119; border-color: #4b2330; }
+    .o-card { border-radius: 18px; border-top-width: 6px; box-shadow: 0 10px 24px -14px rgba(0,0,0,.8); animation: rise .25s ease; }
+    .o-id { font-family: var(--display); font-weight: 400; font-size: 22px; color: var(--marigold); }
+    .o-card.completed .o-id, .o-card.cancelled .o-id { color: #fff; }
+    .s-row { border-radius: 16px; transition: transform .12s, border-color .15s; }
+    .s-row:hover { transform: translateX(3px); }
+    .s-row.out { background: #2d0d15; }
+    .s-thumb { border-radius: 50%; border: 3px solid var(--marigold); }
+    .s-row.out .s-thumb { border-color: #6b3a45; }
+    .s-cat { font-family: var(--display); font-weight: 400; color: var(--marigold); font-size: 22px; }
+    .s-pill { letter-spacing: .02em; }
+    .btn.good { box-shadow: 0 3px 0 #145633; background: var(--chutney); }
+    .filters .cat-tab { background: #2a1119; border-color: #4b2330; }
   </style>
 </head>
 <body>
@@ -59,10 +112,25 @@
     </form>
   </div>
 
+  <nav class="a-tabs" id="tabs" hidden>
+    <button class="a-tab active" data-tab="orders" id="tabOrders">Orders</button>
+    <button class="a-tab" data-tab="stock" id="tabStock">Menu &amp; stock</button>
+  </nav>
+
   <main id="board" class="a-wrap" hidden>
     <div class="filters" id="filters"></div>
     <div id="boardErr" class="a-error" hidden></div>
     <div class="orders" id="orders"></div>
+  </main>
+
+  <main id="stockBoard" class="a-wrap" hidden>
+    <div class="s-head">
+      <div class="filters" id="stockFilters" style="margin:0"></div>
+      <span class="grow" id="stockSummary"></span>
+      <button class="btn good" id="resetStock">Everything back in stock</button>
+    </div>
+    <div id="stockErr" class="a-error" hidden></div>
+    <div id="stockList"></div>
   </main>
 
   <script src="admin.js"></script>

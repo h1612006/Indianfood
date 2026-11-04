@@ -13,6 +13,9 @@
  *   getOrder(id)                -> order | null
  *   listOrders()                -> orders, newest first
  *   setStatus(id, status, at)   -> updated order | null
+ *   getSoldOut()                -> array of menu item ids that are out of stock
+ *   setSoldOut(id, soldOut)     mark one item out of stock (true) or back in stock (false)
+ *   clearSoldOut()              everything back in stock
  *   close()
  */
 
@@ -26,12 +29,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function createFileStore(dir) {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, "orders.json");
+  const stockFile = path.join(dir, "soldout.json");
   let orders = [];
+  let soldOut = new Set();
 
   function persist() {
     const tmp = file + ".tmp";
     fs.writeFileSync(tmp, JSON.stringify(orders, null, 2));
     fs.renameSync(tmp, file);
+  }
+
+  function persistStock() {
+    const tmp = stockFile + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify([...soldOut]));
+    fs.renameSync(tmp, stockFile);
   }
 
   return {
@@ -43,6 +54,11 @@ function createFileStore(dir) {
         orders = JSON.parse(fs.readFileSync(file, "utf8"));
       } catch (_) {
         orders = [];
+      }
+      try {
+        soldOut = new Set(JSON.parse(fs.readFileSync(stockFile, "utf8")));
+      } catch (_) {
+        soldOut = new Set();
       }
     },
 
@@ -84,6 +100,33 @@ function createFileStore(dir) {
         throw e;
       }
       return order;
+    },
+
+    async getSoldOut() {
+      return [...soldOut];
+    },
+
+    async setSoldOut(id, value) {
+      const before = new Set(soldOut);
+      if (value) soldOut.add(id);
+      else soldOut.delete(id);
+      try {
+        persistStock();
+      } catch (e) {
+        soldOut = before;
+        throw e;
+      }
+    },
+
+    async clearSoldOut() {
+      const before = soldOut;
+      soldOut = new Set();
+      try {
+        persistStock();
+      } catch (e) {
+        soldOut = before;
+        throw e;
+      }
     },
 
     async close() {},
@@ -132,6 +175,10 @@ function createPgStore() {
               data        JSONB NOT NULL
             );
             CREATE INDEX IF NOT EXISTS orders_created_idx ON orders (created_at DESC);
+            CREATE TABLE IF NOT EXISTS sold_out (
+              item_id     TEXT PRIMARY KEY,
+              updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
           `);
           return;
         } catch (e) {
@@ -181,6 +228,26 @@ function createPgStore() {
         [id, status, at]
       );
       return rows[0] ? toOrder(rows[0]) : null;
+    },
+
+    async getSoldOut() {
+      const { rows } = await pool.query("SELECT item_id FROM sold_out");
+      return rows.map((r) => r.item_id);
+    },
+
+    async setSoldOut(id, value) {
+      if (value) {
+        await pool.query(
+          "INSERT INTO sold_out (item_id) VALUES ($1) ON CONFLICT (item_id) DO UPDATE SET updated_at = now()",
+          [id]
+        );
+      } else {
+        await pool.query("DELETE FROM sold_out WHERE item_id = $1", [id]);
+      }
+    },
+
+    async clearSoldOut() {
+      await pool.query("DELETE FROM sold_out");
     },
 
     async close() {

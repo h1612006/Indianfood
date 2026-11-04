@@ -46,3 +46,22 @@ test("every category has at least one item", () => {
     assert.ok(menu.items.some((i) => i.category === c.id), `category "${c.id}" is empty`);
   }
 });
+
+test("spice levels and payment methods are set up", () => {
+  assert.ok(Array.isArray(menu.spiceLevels) && menu.spiceLevels.length >= 1, "spiceLevels is missing");
+  const spiceIds = menu.spiceLevels.map((x) => x.id);
+  assert.equal(new Set(spiceIds).size, spiceIds.length, "duplicate spice level id");
+  for (const level of menu.spiceLevels) assert.ok(level.id && level.name, "spice level needs id and name");
+
+  assert.ok(Array.isArray(menu.paymentMethods) && menu.paymentMethods.length >= 1, "paymentMethods is missing");
+  const payIds = menu.paymentMethods.map((x) => x.id);
+  assert.equal(new Set(payIds).size, payIds.length, "duplicate payment method id");
+  for (const m of menu.paymentMethods) assert.ok(m.id && m.name, "payment method needs id and name");
+});
+
+test("every photo has its real size recorded (so the page keeps its proportions)", () => {
+  for (const item of menu.items.filter((i) => i.image)) {
+    assert.ok(Number.isInteger(item.imageWidth) && item.imageWidth > 0, item.id + ": imageWidth");
+    assert.ok(Number.isInteger(item.imageHeight) && item.imageHeight > 0, item.id + ": imageHeight");
+  }
+});

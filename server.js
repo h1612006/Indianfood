@@ -18,8 +18,21 @@ const itemsById = new Map(menu.items.map((i) => [i.id, i]));
 const STATUSES = ["received", "preparing", "ready", "completed", "cancelled"];
 const ORDER_TYPES = ["pickup", "delivery"];
 const MAX_QTY = 100; // per line, e.g. 60 samosas for a party
-// "card" is only a demo (nothing is charged), so it is off unless the menu turns it on.
-const PAYMENTS = menu.cardPaymentDemo ? ["counter", "card"] : ["counter"];
+
+// Spice levels (e.g. Mid / High / Super high). Empty list = the feature is off.
+// The first level is the default when an order does not say. An item can opt out with "spice": false.
+const spiceLevels = Array.isArray(menu.spiceLevels) ? menu.spiceLevels : [];
+
+// How the customer says they will pay. Nothing is charged online: the shop collects the
+// money when the order is picked up or delivered (cash, card machine, or a Bizum transfer).
+const DEFAULT_PAYMENT_METHODS = [
+  { id: "cash", name: "Cash", emoji: "💶" },
+  { id: "card", name: "Card", emoji: "💳" },
+  { id: "bizum", name: "Bizum", emoji: "📱" },
+];
+menu.paymentMethods =
+  Array.isArray(menu.paymentMethods) && menu.paymentMethods.length ? menu.paymentMethods : DEFAULT_PAYMENT_METHODS;
+const PAYMENTS = menu.paymentMethods.map((m) => m.id);
 
 const store = createStore();
 
@@ -67,12 +80,21 @@ function priceLine(raw) {
     (item.removals || []).includes(r)
   );
 
+  let spiceName = null;
+  if (spiceLevels.length && item.spice !== false) {
+    const wanted = raw.spice === undefined || raw.spice === null || raw.spice === "" ? spiceLevels[0].id : raw.spice;
+    const level = spiceLevels.find((s) => s.id === wanted);
+    if (!level) throw new UserError("Unknown spice level for " + item.name + ".");
+    spiceName = level.name;
+  }
+
   unit = round2(unit);
   return {
     itemId: item.id,
     name: item.name,
     emoji: item.emoji,
     unit: item.unit || null,
+    spice: spiceName,
     qty,
     size: sizeName,
     addons,
@@ -91,7 +113,10 @@ function buildOrder(body) {
   body = body || {};
   const type = body.type;
   if (!ORDER_TYPES.includes(type)) throw new UserError("Choose pickup or delivery.");
-  const payment = PAYMENTS.includes(body.payment) ? body.payment : "counter";
+  if (!PAYMENTS.includes(body.payment)) {
+    throw new UserError("Please choose how you will pay (" + menu.paymentMethods.map((m) => m.name).join(", ") + ").");
+  }
+  const payment = body.payment;
 
   const c = body.customer || {};
   const customer = {
@@ -181,12 +206,34 @@ app.get(
   })
 );
 
-app.get("/api/menu", (_req, res) => res.json(menu));
+// Stock changes while the shop is open, so API answers must never be cached.
+app.use("/api", (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
+
+// The menu as customers see it: the fixed menu file plus which items are out of stock right now.
+app.get(
+  "/api/menu",
+  wrap(async (_req, res) => {
+    const sold = new Set(await store.getSoldOut());
+    res.json({ ...menu, items: menu.items.map((i) => ({ ...i, soldOut: sold.has(i.id) })) });
+  })
+);
 
 app.post(
   "/api/orders",
   wrap(async (req, res) => {
     const order = buildOrder(req.body); // throws UserError on bad input
+
+    // Out-of-stock items can be seen but not ordered. (The page also blocks them; this is the real check.)
+    const sold = new Set(await store.getSoldOut());
+    const unavailable = [...new Set(order.items.filter((l) => sold.has(l.itemId)).map((l) => l.name))];
+    if (unavailable.length) {
+      throw new UserError(
+        `Sorry, ${unavailable.join(" and ")} ${unavailable.length > 1 ? "are" : "is"} out of stock right now. Please remove ${unavailable.length > 1 ? "them" : "it"} from your basket.`
+      );
+    }
 
     for (let attempt = 0; ; attempt++) {
       order.id = newOrderId();
@@ -238,6 +285,30 @@ app.patch(
     const order = await store.setStatus(req.params.id, status, new Date().toISOString());
     if (!order) return res.status(404).json({ error: "Order not found." });
     res.json({ order });
+  })
+);
+
+// Mark one item out of stock (true) or back in stock (false).
+app.patch(
+  "/api/admin/items/:id",
+  requireAdmin,
+  wrap(async (req, res) => {
+    const item = itemsById.get(req.params.id);
+    if (!item) return res.status(404).json({ error: "Item not found." });
+    const soldOut = req.body && req.body.soldOut;
+    if (typeof soldOut !== "boolean") throw new UserError("soldOut must be true or false.");
+    await store.setSoldOut(item.id, soldOut);
+    res.json({ id: item.id, soldOut });
+  })
+);
+
+// Everything back in stock (handy at the start of the day).
+app.post(
+  "/api/admin/items-reset-stock",
+  requireAdmin,
+  wrap(async (_req, res) => {
+    await store.clearSoldOut();
+    res.json({ ok: true });
   })
 );
 
