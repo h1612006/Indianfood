@@ -1,0 +1,100 @@
+/* Shared look for the account, kitchen, chef, driver and admin pages.
+   Loaded after each page's own <style>, so it wins on equal specificity. */
+
+:root { --pennants: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='14' viewBox='0 0 48 14'%3E%3Cpath d='M0 0h12L6 14z' fill='%23f5a700'/%3E%3Cpath d='M12 0h12l-6 14z' fill='%23d62828'/%3E%3Cpath d='M24 0h12l-6 14z' fill='%231f7a4a'/%3E%3Cpath d='M36 0h12l-6 14z' fill='%23ff7a00'/%3E%3C/svg%3E"); }
+
+h1, h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: .01em; }
+
+/* ---------- Dark working screens: kitchen, chef, admin accounts, driver ---------- */
+.a-top, .top, .dtop {
+  position: relative;
+  background: var(--maroon);
+  border-bottom: 3px solid var(--marigold);
+  color: #fff;
+}
+.a-top { position: sticky; }
+.a-top::after, .top::after, .dtop::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 14px; margin-top: 3px;
+  background: var(--pennants) repeat-x left top / 48px 14px; pointer-events: none; opacity: .95;
+}
+.a-top h1, .a-top .brand-name, .top strong, .dtop strong { font-family: var(--display); font-weight: 400; color: var(--marigold); font-size: 22px; letter-spacing: .02em; }
+.a-top a, .top a, .dtop a, .top .logout { color: var(--marigold); }
+
+.a-wrap, .wrap, .dwrap { padding-top: 34px; }
+
+body.dark-theme, body:has(.a-top), body:has(.dtop), body:has(.top .nav) {
+  background: #1a0a0f radial-gradient(700px 300px at 90% -5%, rgba(245,167,0,.12), transparent 70%) no-repeat;
+}
+
+.panel, .login, .dlogin, .dcard, .o-card, .stock-panel, .staff-card, .stock-row, .menu-item-row, .entry {
+  border-color: #4b2330;
+}
+.panel, .login, .dlogin, .dcard, .o-card, .stock-panel { background: #2a1119; border-radius: 18px; box-shadow: 0 10px 24px -14px rgba(0,0,0,.8); }
+.stock-row, .menu-item-row, .entry, .staff-card { background: #1f0c13; border-radius: 12px; }
+.o-card { border-top-width: 6px; }
+.o-id { font-family: var(--display); font-weight: 400; font-size: 22px; color: var(--marigold); }
+.o-card.completed .o-id, .o-card.cancelled .o-id { color: #fff; }
+
+.nav a, .admin-nav a, .admin-nav button, .staff-subnav button, .manager-tabs button, .filters .cat-tab {
+  border-color: #4b2330; background: #2a1119; color: #fff; transition: transform .1s, background .15s;
+}
+.nav a:hover, .admin-nav a:hover, .admin-nav button:hover, .manager-tabs button:hover, .staff-subnav button:hover { transform: translateY(-1px); }
+.nav a.active, .admin-nav a.active, .admin-nav button.active, .staff-subnav button.active, .manager-tabs button.active, .filters .cat-tab.active {
+  background: var(--marigold); border-color: var(--marigold); color: var(--maroon);
+}
+.manager-tabs { background: #1a0a0f; }
+
+.stock-toggle { background: var(--chutney); }
+.stock-toggle.off { background: #b00020; }
+.btn.good { background: var(--chutney); box-shadow: 0 3px 0 #145633; color: #fff; }
+
+.login input, .dlogin input, .dcard input, .form input, .form select, .menu-form input, .menu-form textarea, .menu-form select {
+  background: #1f0c13; border-color: #5c2f3d; color: #fff;
+}
+.login input:focus, .dlogin input:focus, .dcard input:focus, .form input:focus, .form select:focus, .menu-form input:focus, .menu-form textarea:focus {
+  outline: 3px solid rgba(245,167,0,.45); outline-offset: 1px; border-color: var(--marigold);
+}
+.dlogin, .login { border-top: 6px solid var(--marigold); }
+.dcard h2 { font-size: 22px; color: var(--marigold); }
+.dstatus { background: var(--marigold); color: var(--maroon); }
+.entry-head strong, .staff-card strong { color: #fff; }
+
+/* ---------- Sign-in and account page ---------- */
+body:has(.account-wrap) {
+  min-height: 100vh;
+  background:
+    radial-gradient(800px 380px at 85% 0%, rgba(245,167,0,.25), transparent 60%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='.07' stroke-width='1.5'%3E%3Ccircle cx='32' cy='32' r='22'/%3E%3Ccircle cx='32' cy='32' r='10'/%3E%3Cpath d='M32 0v64M0 32h64'/%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(160deg, #6b1427 0%, var(--maroon) 55%, #2f0711 100%);
+  background-attachment: fixed;
+}
+body:has(.account-wrap) .top { background: transparent; border-bottom: 0; box-shadow: none; padding-top: 18px; }
+body:has(.account-wrap) .top::after { top: 0; margin-top: 0; height: 14px; }
+body:has(.account-wrap) .top a { font-weight: 700; position: relative; top: 14px; }
+.account-wrap { margin-top: 44px; }
+.account-card {
+  background: #fff; border: 0; border-top: 8px solid var(--marigold); border-radius: 24px; padding: 28px 26px;
+  box-shadow: 0 24px 50px -18px rgba(0,0,0,.6); animation: rise .3s cubic-bezier(.2,.9,.3,1.1);
+}
+.account-card h1 { font-size: 34px; color: var(--maroon); display: flex; align-items: center; gap: 10px; }
+.account-card h1::before { content: "🥟"; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--marigold); font-size: 24px; }
+.account-card label { color: var(--maroon); }
+.account-card input, .account-card select { border: 2px solid #eadfce; border-radius: 12px; background: #fffdf8; }
+.account-card input:focus, .account-card select:focus { outline: 3px solid rgba(245,167,0,.45); border-color: var(--marigold); }
+.switch button { border: 2px solid #eadfce; font-family: inherit; cursor: pointer; transition: background .15s, color .15s; }
+.switch button.active { background: var(--maroon); border-color: var(--maroon); color: var(--marigold); }
+.message { background: #fff3d6; border: 1px solid #f1dfb3; color: var(--maroon); }
+.hint { color: #6b5a52; }
+@keyframes rise { from { opacity: 0; transform: translateY(18px) scale(.98); } }
+
+@media (max-width: 560px) { .account-card { padding: 22px 18px; } .a-top h1, .top strong, .dtop strong { font-size: 19px; } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* beat the generic `form input[type=text]` rules in styles.css */
+html body :is(.login, .dlogin, .dcard, .form, .menu-form) :is(input:not([type=checkbox]):not([type=radio]), textarea, select) {
+  background: #1f0c13; color: #fff; border: 2px solid #5c2f3d; border-radius: 12px;
+}
+html body :is(.login, .dlogin, .dcard, .form, .menu-form) :is(input, textarea, select):focus { border-color: var(--marigold); outline: 3px solid rgba(245,167,0,.45); outline-offset: 1px; }
+
+/* readable links on the dark cards */
+.dlogin a, .dcard a, .panel a, .login a, .stock-panel a { color: var(--marigold); }
