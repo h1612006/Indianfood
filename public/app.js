@@ -483,6 +483,13 @@ function wireCheckout() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Something went wrong.");
 
+      if (data.checkoutUrl) {
+        // Card: pay on Stripe's secure page. The basket stays until payment is done.
+        btn.textContent = "Opening secure payment…";
+        window.location.href = data.checkoutUrl;
+        return;
+      }
+
       store("ss_customer", { name: payload.customer.name, phone: payload.customer.phone, address: f.address.value });
       store("ss_last_order", data.order.id);
       cart = [];
@@ -500,6 +507,26 @@ function wireCheckout() {
       btn.textContent = "Place order";
     }
   });
+}
+
+/* ---------- coming back from the card payment page ---------- */
+
+function handleCardReturn() {
+  const q = new URLSearchParams(location.search);
+  const paid = q.get("paid");
+  const cancelled = q.get("cancelled");
+  if (!paid && !cancelled) return;
+  history.replaceState(null, "", location.pathname);
+  if (paid) {
+    store("ss_last_order", paid.toUpperCase());
+    cart = [];
+    saveCart();
+    renderCartBits();
+    showTrackButton();
+    openTracker(paid.toUpperCase());
+  } else {
+    toast("Payment cancelled. Your basket is still here.", 5000);
+  }
 }
 
 /* ---------- order tracking ---------- */
@@ -534,7 +561,7 @@ function renderTracker(order) {
     <div class="track-id">ORDER ${esc(order.id)}</div>
     ${order.deliveryOtp && order.type === "delivery" ? `<div class="note" style="margin:12px 0;padding:14px;border:2px dashed #d62828"><strong>Your delivery OTP: <span style="font-size:24px;letter-spacing:4px">${esc(order.deliveryOtp)}</span></strong><br>Give this code to your driver only when your food arrives.</div>` : ""}
     <h2 class="track-title" id="trackTitle">${esc(headline(order))}</h2>
-    <p class="muted">${order.type === "delivery" ? "Delivery" : order.type === "eat_here" ? "Eat here" : "Takeaway"} · ${({cash:"Cash",card:"Card",bizum:"Bizum",counter:order.type === "delivery" ? "Pay on delivery" : "Pay at the counter"})[order.payment] || esc(order.payment)}</p>
+    <p class="muted">${order.type === "delivery" ? "Delivery" : order.type === "eat_here" ? "Eat here" : "Takeaway"} · ${({cash:"Cash",card:"Card",bizum:"Bizum",counter:order.type === "delivery" ? "Pay on delivery" : "Pay at the counter"})[order.payment] || esc(order.payment)}${order.payment === "card" ? (order.paymentReceived ? " · <strong>Paid online ✓</strong>" : order.awaitingPayment && order.status !== "cancelled" ? " · waiting for payment confirmation…" : "") : ""}</p>
     ${
       cancelled
         ? `<div class="cancelled-banner">Sorry — the restaurant cancelled this order. Please call us or place a new one.</div>`
@@ -647,12 +674,15 @@ async function init() {
   // Drop basket lines for items that no longer exist on the menu.
   cart = cart.filter((l) => itemsById.has(l.itemId));
 
+  if (menu.onlineCard && $("#cardHint")) $("#cardHint").textContent = "(you'll pay securely online)";
   renderMenu();
+  document.dispatchEvent(new CustomEvent("menu:ready", { detail: menu }));
   wireCart();
   wireCheckout();
   renderCartBits();
   showTrackButton();
   setInterval(refreshStock, 15000);
+  handleCardReturn();
 
   const fromUrl = new URLSearchParams(location.search).get("order");
   if (fromUrl) openTracker(fromUrl.toUpperCase());

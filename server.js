@@ -154,6 +154,7 @@ function buildOrder(body) {
     status: "received",
     serviceType: type === "eat_here" ? "eat_here" : (type === "pickup" ? "takeaway" : "delivery"),
     paymentReceived: false,
+    ...(ONLINE_CARD && payment === "card" ? { awaitingPayment: true } : {}),
     createdAt: now,
     updatedAt: now,
   };
@@ -172,6 +173,7 @@ function publicOrder(o, user = null) {
     status: o.status,
     serviceType: o.serviceType || (o.type === "pickup" ? "takeaway" : o.type),
     paymentReceived: !!o.paymentReceived,
+    awaitingPayment: !!o.awaitingPayment,
     createdAt: o.createdAt,
     updatedAt: o.updatedAt,
     ...(user && user.role === "customer" && o.customerEmail === user.email && o.deliveryOtp ? { deliveryOtp: o.deliveryOtp } : {}),
@@ -180,15 +182,82 @@ function publicOrder(o, user = null) {
 
 /* ---------- app ---------- */
 
+
+/* ---------- online card payments (Stripe) ----------
+   Set STRIPE_SECRET_KEY to turn this on. Customers who choose "Card" are sent to
+   Stripe's hosted payment page; Stripe pays the money out to the bank account
+   connected in the Stripe dashboard. Without a key, "Card" is just a choice
+   the customer pays at pickup/delivery, exactly as before. */
+const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || "";
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
+const ONLINE_CARD = /^sk_(test|live)_/.test(STRIPE_KEY);
+const STRIPE_CURRENCY = (process.env.STRIPE_CURRENCY || ({ "€": "eur", "$": "usd", "£": "gbp" })[menu.currency] || "eur").toLowerCase();
+if (STRIPE_KEY && !ONLINE_CARD) console.warn("STRIPE_SECRET_KEY looks wrong (it must start with sk_test_ or sk_live_). Card stays pay-on-pickup.");
+if (ONLINE_CARD && !STRIPE_WEBHOOK_SECRET) console.warn("STRIPE_WEBHOOK_SECRET is not set: card payments will not be confirmed. See the README.");
+
+async function stripePost(pathName, params) {
+  const r = await fetch((process.env.STRIPE_API_BASE || "https://api.stripe.com/v1/") + pathName, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + STRIPE_KEY, "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(params),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error("Stripe: " + ((data.error && data.error.message) || r.status));
+  return data;
+}
+
+// Checks the "Stripe-Signature" header (HMAC-SHA256 of "<timestamp>.<raw body>").
+function verifyStripeSignature(raw, header, secret, now = Date.now()) {
+  if (!secret || !header) return false;
+  const parts = Object.fromEntries(String(header).split(",").map((kv) => kv.split("=").map((x) => x.trim())).filter((kv) => kv.length === 2));
+  const t = Number(parts.t);
+  if (!t || Math.abs(now / 1000 - t) > 300) return false;
+  const expected = crypto.createHmac("sha256", secret).update(t + "." + raw.toString("utf8")).digest("hex");
+  return String(header).split(",").some((kv) => {
+    const [k, v] = kv.split("=").map((x) => x.trim());
+    return k === "v1" && v && v.length === expected.length && crypto.timingSafeEqual(Buffer.from(v), Buffer.from(expected));
+  });
+}
+
 const app = express();
 app.disable("x-powered-by");
+
+// Express 4 does not catch errors from async handlers, so wrap them.
+const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
+
+// Stripe calls this when a customer finishes (or abandons) the card payment page.
+// It needs the raw request body to check the signature, so it comes before express.json().
+app.post("/api/stripe/webhook", express.raw({ type: "*/*", limit: "1mb" }), wrap(async (req, res) => {
+  if (!ONLINE_CARD) return res.status(404).end();
+  if (!verifyStripeSignature(req.body, req.get("stripe-signature"), STRIPE_WEBHOOK_SECRET)) {
+    return res.status(400).json({ error: "Bad signature." });
+  }
+  let event;
+  try { event = JSON.parse(req.body.toString("utf8")); } catch (_) { return res.status(400).json({ error: "Bad payload." }); }
+  const session = event && event.data && event.data.object;
+  const orderId = session && session.metadata && String(session.metadata.orderId || "").toUpperCase();
+  const order = orderId ? await store.getOrder(orderId) : null;
+  if (order && order.stripeSessionId === session.id) {
+    const now = new Date().toISOString();
+    if (event.type === "checkout.session.completed" && session.payment_status === "paid") {
+      const cents = Math.round(order.total * 100);
+      if (session.amount_total !== cents || String(session.currency).toLowerCase() !== STRIPE_CURRENCY) {
+        console.error("Stripe amount mismatch for order", orderId);
+      } else if (!order.paymentReceived) {
+        await store.setStatus(orderId, order.status, now, { paymentReceived: true, awaitingPayment: false, paidOnline: true, paidAt: now });
+      }
+    } else if (event.type === "checkout.session.expired" && order.awaitingPayment) {
+      await store.setStatus(orderId, "cancelled", now); // unpaid, so it stays hidden from the kitchen
+    }
+  }
+  res.json({ received: true });
+}));
+
 app.use(express.json({ limit: "50kb" }));
 app.get("/", (_req, res) => res.redirect(301, "/profile.html"));
 app.use(express.static(path.join(__dirname, "public")));
 app.use((req,res,next)=>{const token=String(req.get("authorization")||"").replace(/^Bearer /,"");req.user=sessions.get(token)||null;next();});
 
-// Express 4 does not catch errors from async handlers, so wrap them.
-const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
 // Used by Docker and hosting platforms to check the app (and its database) is alive.
 app.get(
@@ -204,7 +273,7 @@ app.get(
   })
 );
 
-app.get("/api/menu", wrap(async (_req, res) => res.json({ ...menu, stock: await store.listStock() })));
+app.get("/api/menu", wrap(async (_req, res) => res.json({ ...menu, stock: await store.listStock(), onlineCard: ONLINE_CARD })));
 
 app.post(
   "/api/orders",
@@ -226,6 +295,30 @@ app.post(
       } catch (e) {
         if (e.code === "DUPLICATE" && attempt < 5) continue; // id clash: pick another
         throw e;
+      }
+    }
+    if (ONLINE_CARD && order.payment === "card") {
+      const base = process.env.PUBLIC_URL || `${req.get("x-forwarded-proto") || req.protocol}://${req.get("host")}`;
+      try {
+        const session = await stripePost("checkout/sessions", {
+          mode: "payment",
+          "payment_method_types[0]": "card",
+          "line_items[0][quantity]": "1",
+          "line_items[0][price_data][currency]": STRIPE_CURRENCY,
+          "line_items[0][price_data][unit_amount]": String(Math.round(order.total * 100)),
+          "line_items[0][price_data][product_data][name]": `${menu.brand || "Order"} order ${order.id}`,
+          client_reference_id: order.id,
+          "metadata[orderId]": order.id,
+          customer_email: order.customerEmail || "",
+          success_url: `${base}/menu.html?paid=${order.id}`,
+          cancel_url: `${base}/menu.html?cancelled=${order.id}`,
+        });
+        await store.setStatus(order.id, order.status, new Date().toISOString(), { stripeSessionId: session.id });
+        return res.status(201).json({ order: publicOrder(order), checkoutUrl: session.url });
+      } catch (e) {
+        console.error("Could not start card payment:", e.message);
+        await store.setStatus(order.id, "cancelled", new Date().toISOString()); // stays hidden from the kitchen
+        throw new UserError("Card payment is not available right now. Please choose cash or Bizum.");
       }
     }
     res.status(201).json({ order: publicOrder(order) });
@@ -363,7 +456,7 @@ app.get(
   "/api/admin/orders",
   requireKitchen,
   wrap(async (_req, res) => {
-    res.json({ orders: await store.listOrders() });
+    res.json({ orders: (await store.listOrders()).filter((o) => !o.awaitingPayment) });
   })
 );
 
@@ -478,7 +571,7 @@ app.get("/api/driver/orders", requireDriver, wrap(async (_req, res) => {
   // the manager moves an order to out_for_delivery.
   const driverId = (_req.driver && _req.driver.email) || "legacy-driver";
   const orders = (await store.listOrders())
-    .filter(o => o.type === "delivery" && ["received", "preparing", "ready", "out_for_delivery", "picked_up"].includes(o.status) && (!o.driverAcceptedBy || o.driverAcceptedBy === driverId) && !(Array.isArray(o.driverRejectedBy) ? o.driverRejectedBy.includes(driverId) : o.driverRejectedBy === driverId))
+    .filter(o => !o.awaitingPayment && o.type === "delivery" && ["received", "preparing", "ready", "out_for_delivery", "picked_up"].includes(o.status) && (!o.driverAcceptedBy || o.driverAcceptedBy === driverId) && !(Array.isArray(o.driverRejectedBy) ? o.driverRejectedBy.includes(driverId) : o.driverRejectedBy === driverId))
     .map(o => ({
       id: o.id,
       status: o.status,

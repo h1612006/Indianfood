@@ -140,6 +140,24 @@ Open the address on a phone. Android (Chrome): menu → *Install app*. iPhone (S
 
 Free-plan limits (see Render's [free tier page](https://render.com/docs/free)): the app sleeps after 15 minutes without visitors and takes about a minute to wake; the free database expires after 30 days and has no backups. Good for a demo or trial. For a real restaurant, use the Docker route above or a paid plan.
 
+## Take card payments into your bank account
+
+Cards are handled by [Stripe](https://stripe.com), which holds the money safely and pays it out to **your bank account** (usually within a few days). Card numbers never touch this app or your server. Without the steps below, "Card" is only a choice the customer pays at pickup or delivery, and nothing breaks.
+
+1. Create a Stripe account at https://dashboard.stripe.com/register, choose Spain, and finish "Activate payments" (business details and your **IBAN**, which is where the money will be paid).
+2. In Stripe, open **Developers → API keys** and copy the **Secret key** (starts with `sk_test_` while testing, `sk_live_` for real money).
+3. In Stripe, open **Developers → Webhooks → Add endpoint**:
+   - URL: `https://YOUR-SITE/api/stripe/webhook`
+   - Events: `checkout.session.completed` and `checkout.session.expired`
+   - Copy the **Signing secret** (starts with `whsec_`).
+4. Give the app three settings (on Render: your service → *Environment*; with Docker: the `.env` file):
+   - `STRIPE_SECRET_KEY` = the secret key
+   - `STRIPE_WEBHOOK_SECRET` = the signing secret
+   - `PUBLIC_URL` = your site address, for example `https://indianfood.onrender.com`
+5. Restart the app. Try it first with the `sk_test_` key and Stripe's test card `4242 4242 4242 4242` (any future date, any CVC). When it works, swap in the `sk_live_` key and the live webhook.
+
+How it works: the customer chooses **Card**, is sent to Stripe's secure payment page, pays, and returns to the tracker, which shows **Paid online ✓**. The kitchen only sees a card order after Stripe confirms the payment, and the amount is checked against the server-side total. If the customer closes the payment page, no order reaches the kitchen. Bizum and cash stay as "pay at pickup or delivery" (Stripe does not offer Bizum).
+
 ## Change the menu, brand and prices
 
 Everything is in [`data/menu.json`](data/menu.json): brand name, tagline, currency symbol, delivery fee, free-delivery threshold, minimum delivery order, categories and every item. Photos live in [`public/img/`](public/img/); the customer menu displays the complete image without cropping. After editing, commit and push; the hosting redeploys by itself (locally, restart the server).

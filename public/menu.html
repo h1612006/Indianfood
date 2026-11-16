@@ -13,6 +13,9 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" type="image/png" href="/icon-192.png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;600;700;800&family=Yatra+One&display=swap">
   <link rel="stylesheet" href="styles.css"><script>if(!localStorage.getItem("ss_auth_token"))location.replace("/profile.html");</script>
 </head>
 <body>
@@ -31,15 +34,20 @@
     </nav>
   </header>
 
-  <section class="hero">
+  <section class="hero" id="hero">
+    <div class="toran" id="toran" aria-hidden="true"></div>
     <div class="hero-inner">
-      <h1 id="tagline">Indian snacks, ready to order.</h1>
-      <p>Choose takeaway, eat here or delivery. Snacks are sold by the piece, box or kilo.</p>
-      <div class="hero-pills">
-        <span>🥟 By the piece, box or kilo</span>
-        <span>🛵 Pickup or delivery</span>
-        <span>⏱️ Live order tracking</span>
+      <div class="hero-copy">
+        <h1 id="tagline">Indian snacks, ready to order.</h1>
+        <p>Choose takeaway, eat here or delivery. Pick your spice level and pay by cash, card or Bizum.</p>
+        <div class="hero-pills">
+          <span>🥟 By the piece, box or kilo</span>
+          <span>🛵 Pickup or delivery</span>
+          <span>⏱️ Live order tracking</span>
+        </div>
+        <a class="btn hero-cta" href="#menuRoot">See the menu</a>
       </div>
+      <div class="plates" id="plates" aria-hidden="true"></div>
     </div>
   </section>
 
@@ -99,7 +107,7 @@
         <fieldset>
           <legend>Payment</legend>
           <label class="radio"><input type="radio" name="payment" value="cash" checked> Cash</label>
-          <label class="radio"><input type="radio" name="payment" value="card"> Card <span class="muted">(payment choice only; no online charge is processed)</span></label>
+          <label class="radio"><input type="radio" name="payment" value="card"> Card <span class="muted" id="cardHint">(pay when you collect or receive your order)</span></label>
           <label class="radio"><input type="radio" name="payment" value="bizum"> Bizum</label>
         </fieldset>
         <div class="summary" id="checkoutSummary"></div>
@@ -120,5 +128,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="app.js"></script>
+  <script src="fx.js"></script>
 </body>
 </html>
