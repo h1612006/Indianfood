@@ -6,14 +6,12 @@ An online ordering app for an Indian snacks shop: customers browse the menu with
 
 **Customers**
 - Menu with photos, categories and a unit under each price (per piece, per box, per kg, 20 pieces...)
+- Required spice selection on each item: Mid, High or Super High
 - Optional item customization (sizes, paid extras, free removals) when an item defines them in `data/menu.json`
 - Up to 100 of any item per order
 - Basket with quantity controls, saved between visits
 - Pickup or delivery, with a delivery fee, a free-delivery threshold and a minimum order
-- Spice level on every snack: Mid, High or Super high (default Mid)
-- Checkout with name, phone, address (delivery), kitchen notes and a payment choice: Cash, Card or Bizum. Nothing is charged online; the customer pays at pickup or delivery
-- Items marked out of stock stay visible with an "Out of stock" badge and show a notice when tapped, but cannot be ordered (the server also refuses them)
-- Festival-style design: marigold garland, floating dish plates, full-size photos
+- Checkout with name, phone, address (delivery), kitchen notes and cash/card/Bizum payment choice
 - Live order tracker (Received → Preparing → Ready / On its way → Done) that updates by itself
 - Works on phones and desktops
 
@@ -21,9 +19,21 @@ An online ordering app for an Indian snacks shop: customers browse the menu with
 - Password login
 - Live board of orders, refreshed every 5 seconds, with a beep for new orders
 - One-tap status buttons, cancel and reopen
+- Per-item in-stock/out-of-stock controls, saved persistently in Postgres (or the local file store)
 - Active / Done / All filters
-- Each order shows payment method and the spice level of every item
-- **Menu & stock** tab: list of all items with an *Out of stock* / *Back in stock* button each, plus "Everything back in stock". Saved in the database, so it survives restarts
+- Payment received / not received control on every order
+- Manager-only pickup and customer delivery OTPs after an order is sent out
+
+**Delivery drivers** (`/driver.html`)
+- Separate driver password (`DRIVER_PASSWORD`, at least 12 characters)
+- Delivery jobs appear automatically while the page refreshes every five seconds
+- Driver confirms pickup with the manager-issued pickup OTP
+- Driver confirms delivery with the customer-issued delivery OTP
+- The driver API never returns the customer delivery OTP; the manager must share it directly with the customer
+- Incorrect handover codes are rate-limited
+
+**Order options**
+- Customers can choose takeaway, eat here, or delivery
 
 **Security basics**
 - Prices are always calculated on the server; anything the browser sends about price is ignored
@@ -42,7 +52,7 @@ You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Wind
    - Windows PowerShell: `Copy-Item .env.example .env`
    - Mac/Linux: `cp .env.example .env`
 
-   Open `.env` in a text editor and change `ADMIN_PASSWORD` (kitchen screen) and `POSTGRES_PASSWORD` (database). Letters and numbers are safest.
+   Open `.env` in a text editor and change `ADMIN_PASSWORD` (kitchen screen), `DRIVER_PASSWORD` (driver page) and `POSTGRES_PASSWORD` (database). Letters and numbers are safest.
 2. Start everything:
    ```
    docker compose up --build
@@ -104,6 +114,7 @@ Repository → **Settings** → **Secrets and variables** → **Actions** → **
 | `DEPLOY_SSH_KEY` | The full contents of the private file `deploy_key` |
 | `DEPLOY_PORT` | Optional. Only if SSH is not on port 22 |
 | `ADMIN_PASSWORD` | Kitchen screen password (choose a strong one) |
+| `DRIVER_PASSWORD` | Separate driver page password (choose a strong one) |
 | `POSTGRES_PASSWORD` | Database password (letters and numbers) |
 
 Then push to `main` (or open the **Actions** tab → *Test, build and deploy* → **Run workflow**). When it turns green, open `http://YOUR-SERVER:3000`.
@@ -124,14 +135,14 @@ Open the address on a phone. Android (Chrome): menu → *Install app*. iPhone (S
 
 1. Sign in at render.com with GitHub (as the account that owns this repo) and allow access to this repository.
 2. **New +** → **Blueprint** → choose this repository.
-3. Enter an `ADMIN_PASSWORD` (the kitchen screen password) and click **Apply**.
+3. Enter an `ADMIN_PASSWORD` (the kitchen screen password) and a separate `DRIVER_PASSWORD`, then click **Apply**.
 4. After a few minutes you get a link like `https://spice-smash.onrender.com`. Customers order there; you watch orders arrive at `/admin.html` on the same link.
 
 Free-plan limits (see Render's [free tier page](https://render.com/docs/free)): the app sleeps after 15 minutes without visitors and takes about a minute to wake; the free database expires after 30 days and has no backups. Good for a demo or trial. For a real restaurant, use the Docker route above or a paid plan.
 
 ## Change the menu, brand and prices
 
-Everything is in [`data/menu.json`](data/menu.json): brand name, tagline, currency symbol, delivery fee, free-delivery threshold, minimum delivery order, categories and every item. Photos live in [`public/img/`](public/img/). After editing, commit and push; the hosting redeploys by itself (locally, restart the server).
+Everything is in [`data/menu.json`](data/menu.json): brand name, tagline, currency symbol, delivery fee, free-delivery threshold, minimum delivery order, categories and every item. Photos live in [`public/img/`](public/img/); the customer menu displays the complete image without cropping. After editing, commit and push; the hosting redeploys by itself (locally, restart the server).
 
 One item looks like this:
 
@@ -149,10 +160,9 @@ One item looks like this:
 ```
 
 - `unit` is optional text shown after the price ("per piece", "per box", "20 pieces", "250 g").
-- `image` is optional. Without it the `emoji` is shown instead. Put the photo in `public/img/` (a square JPG around 500 px keeps the page fast).
+- `image` is optional. Without it the `emoji` is shown instead. Put the full photo in `public/img/`; the page uses `object-fit: contain` so the image is not cropped.
 - Optional extras: `"sizes": "standard"` (sizes are defined once under `sizes`), `"addons": [{"id","name","price"}]`, and `"removals": ["Onions"]`.
-- `spiceLevels` (top of the file) sets the spice choices; add `{"id":"mild","name":"Mild"}` for a fourth. An item with `"spice": false` has no spice choice.
-- `paymentMethods` sets Cash / Card / Bizum. Put your Bizum phone number in `"bizumNumber"` and customers see it at checkout.
+- `payments` lists accepted choices (`cash`, `card`, `bizum`). Card and Bizum are recorded as the customer-selected method only; no online payment is processed.
 - Run `npm test` after editing: it checks every item for a missing name, bad price, unknown category or missing photo.
 
 ## Project structure
@@ -184,7 +194,10 @@ render.yaml        Optional quick-demo hosting config for Render
 | POST | `/api/orders` | Place an order |
 | GET | `/api/orders/:id` | Track an order (status and items only) |
 | GET | `/api/admin/orders` | All orders (needs `x-admin-password` header) |
-| PATCH | `/api/admin/orders/:id` | Change status: `received`, `preparing`, `ready`, `completed`, `cancelled` |
+| PATCH | `/api/admin/orders/:id` | Change status; `out_for_delivery` generates two separate OTPs |
+| PATCH | `/api/admin/orders/:id/payment` | Mark payment received or not received |
+| GET | `/api/driver/orders` | Assigned/in-progress deliveries (driver password required) |
+| POST | `/api/driver/orders/:id/handover` | Verify pickup or customer delivery OTP |
 
 ## What is intentionally simple (and how to grow it)
 
@@ -193,3 +206,16 @@ render.yaml        Optional quick-demo hosting config for Render
 - **One shared admin password.** For several staff members, add proper accounts.
 - **No rate limiting.** Add `express-rate-limit` before exposing it publicly.
 - **Customer accounts, order history, promo codes and email/SMS notifications** are natural next steps.
+
+## Email verification (production)
+
+Customer, kitchen-staff and driver accounts must verify their email address with a six-digit code before signing in. Codes expire after 10 minutes, are single-use, and allow up to five attempts. The server stores only a hash of the code.
+
+Email delivery supports Brevo or Resend. Brevo can use a verified Gmail sender address; Resend requires a verified sending domain. In the Render service environment, set these variables (never commit them to GitHub):
+
+- `BREVO_API_KEY`: a Brevo transactional email API key (recommended if you want to use a verified Gmail sender address), or `RESEND_API_KEY` for Resend.
+- `EMAIL_FROM`: the sender email address verified with your provider. With Resend, use a sender on a verified domain. With Brevo, verify the sender address in your Brevo account.
+- `EMAIL_FROM_NAME`: optional sender display name; defaults to `Spice Smash`.
+- `OTP_PEPPER`: a long random secret used to hash verification codes (recommended; if omitted, the configured admin password is used as the pepper).
+
+The code is delivered to the account's email address, including Gmail addresses. Before enabling registration, verify the sender address in Brevo or verify your sending domain and DNS records in Resend. Automated tests set `EMAIL_TEST_MODE=true`; the test-only code is never returned in production.

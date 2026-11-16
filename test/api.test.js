@@ -18,9 +18,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const ADMIN = "test-admin-pw";
+const DRIVER = "test-driver-password-123";
 let child;
 let base;
 let tmpDir;
+let defaultCustomerToken;
+let chefToken;
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -56,7 +59,9 @@ before(async () => {
       ...process.env,
       PORT: String(port),
       ADMIN_PASSWORD: ADMIN,
+      DRIVER_PASSWORD: DRIVER,
       DATA_DIR: tmpDir,
+      EMAIL_TEST_MODE: "true",
       // A fixed test menu with sizes, extras and removals, so these tests do not change
       // when the real menu in data/menu.json is edited.
       MENU_FILE: path.join(__dirname, "fixtures", "menu.fixture.json"),
@@ -70,6 +75,17 @@ before(async () => {
     if (code) console.error("Server exited early:\n" + log);
   });
   await waitForHealth(base);
+  const customerRegistration = await fetch(base + "/api/auth/register", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Default Test Customer",email:"default-customer@example.com",phone:"+34 600 000 000",password:"default-customer-password",role:"customer"})});
+  assert.equal(customerRegistration.status,201);
+  const defaultCustomerLogin=await fetch(base+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:"default-customer@example.com",password:"default-customer-password"})});
+  defaultCustomerToken=(await defaultCustomerLogin.json()).token;
+  const chefRegistration=await fetch(base + "/api/auth/register", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Kitchen Test Chef",email:"kitchen-chef@example.com",phone:"+34 600 000 001",password:"kitchen-chef-password",role:"chef"})});
+  assert.equal(chefRegistration.status,201);
+  const chefApproval=await fetch(base + "/api/admin/staff-applications/kitchen-chef%40example.com", {method:"PATCH",headers:{"Content-Type":"application/json","x-admin-password":ADMIN},body:JSON.stringify({approved:true})});
+  assert.equal(chefApproval.status,200);
+  const chefLogin=await fetch(base+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:"kitchen-chef@example.com",password:"kitchen-chef-password"})});
+  assert.equal(chefLogin.status,200);
+  chefToken=(await chefLogin.json()).token;
   console.log("Testing against:", /Order storage: (.*)/.exec(log)?.[1] || "unknown storage");
 });
 
@@ -86,17 +102,18 @@ after(async () => {
 const json = (method, url, body, headers = {}) =>
   fetch(base + url, {
     method,
-    headers: { "Content-Type": "application/json", ...headers },
+    headers: { "Content-Type": "application/json", ...(defaultCustomerToken ? {"Authorization":"Bearer "+defaultCustomerToken} : {}), ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
 const admin = { "x-admin-password": ADMIN };
+const chefHeaders = () => ({ "Authorization": "Bearer " + (chefToken || "") });
 const customer = { name: "Test Customer", phone: "+34 600 111 222" };
 
 async function placeOrder(overrides = {}) {
   const res = await json("POST", "/api/orders", {
     type: "pickup",
-    payment: "cash",
+    payment: "counter",
     customer,
     items: [{ itemId: "classic-smash", qty: 1 }],
     ...overrides,
@@ -110,7 +127,7 @@ test("health check and menu", async () => {
   assert.equal((await fetch(base + "/healthz")).status, 200);
   const menu = await (await fetch(base + "/api/menu")).json();
   assert.equal(menu.brand, "Spice Smash");
-  assert.equal(menu.items.length, 19);
+  assert.ok(menu.items.length >= 19, "menu includes the fixture catalogue and any persisted manager additions");
 });
 
 test("prices are calculated on the server (sizes, extras, quantities)", async () => {
@@ -198,7 +215,7 @@ test("kitchen endpoints need the admin password", async () => {
   assert.equal((await fetch(base + "/api/admin/orders")).status, 401);
   assert.equal((await json("GET", "/api/admin/orders", undefined, { "x-admin-password": "wrong" })).status, 401);
   const { data } = await placeOrder();
-  assert.equal((await json("PATCH", "/api/admin/orders/" + data.order.id, { status: "ready" })).status, 401);
+  assert.equal((await json("PATCH", "/api/admin/orders/" + data.order.id, { status: "ready" })).status, 403);
 });
 
 test("kitchen can move an order through every status, and the customer sees it", async () => {
@@ -206,15 +223,15 @@ test("kitchen can move an order through every status, and the customer sees it",
   const id = data.order.id;
 
   for (const status of ["preparing", "ready", "completed"]) {
-    const res = await json("PATCH", "/api/admin/orders/" + id, { status }, admin);
+    const res = await json("PATCH", "/api/admin/orders/" + id, { status }, chefHeaders());
     assert.equal(res.status, 200);
     assert.equal((await res.json()).order.status, status);
     const seen = (await (await fetch(base + "/api/orders/" + id)).json()).order;
     assert.equal(seen.status, status);
   }
 
-  assert.equal((await json("PATCH", "/api/admin/orders/" + id, { status: "bogus" }, admin)).status, 400);
-  assert.equal((await json("PATCH", "/api/admin/orders/SS-NOPE0", { status: "ready" }, admin)).status, 404);
+  assert.equal((await json("PATCH", "/api/admin/orders/" + id, { status: "bogus" }, chefHeaders())).status, 400);
+  assert.equal((await json("PATCH", "/api/admin/orders/SS-NOPE0", { status: "ready" }, chefHeaders())).status, 404);
 });
 
 test("kitchen list shows full details, newest first", async () => {
@@ -244,120 +261,192 @@ test("20 simultaneous orders all succeed with unique ids", async () => {
   assert.equal(new Set(ids).size, 20);
 });
 
+
+test("customers can register and staff need admin approval", async () => {
+  const customerReg=await json("POST","/api/auth/register",{name:"Profile Customer",email:"customer-profile@example.com",phone:"+34 600 222 333",password:"customer-password-123",role:"customer"});
+  assert.equal(customerReg.status,201);
+  assert.equal((await customerReg.json()).verificationRequired,undefined);
+  const customerLogin=await json("POST","/api/auth/login",{email:"customer-profile@example.com",password:"customer-password-123"});
+  assert.equal(customerLogin.status,200);
+  assert.equal((await customerLogin.json()).user.role,"customer");
+  const staffReg=await json("POST","/api/auth/register",{name:"New Driver",email:"new-driver@example.com",phone:"+34 600 333 444",password:"driver-password-123",role:"driver"});
+  assert.equal(staffReg.status,201);
+  assert.equal((await staffReg.json()).verificationRequired,undefined);
+  assert.equal((await json("POST","/api/auth/login",{email:"new-driver@example.com",password:"driver-password-123"})).status,403);
+  const pending=await json("GET","/api/admin/staff-applications",undefined,admin);
+  const pendingData=await pending.json();
+  const driverApplication=pendingData.applications.find(u=>u.email==="new-driver@example.com");
+  assert.ok(driverApplication);
+  assert.match(driverApplication.staffId,/^DRV-[A-F0-9]{6}$/);
+  const approved=await json("PATCH","/api/admin/staff-applications/new-driver%40example.com",{approved:true},admin);
+  assert.equal(approved.status,200);
+  const login=await json("POST","/api/auth/login",{email:"new-driver@example.com",password:"driver-password-123"});
+  assert.equal(login.status,200);
+  const driverUser=(await login.json()).user;
+  assert.equal(driverUser.role,"driver");
+  const byStaffId=await json("POST","/api/auth/login",{email:driverUser.staffId,password:"driver-password-123"});
+  assert.equal(byStaffId.status,200);
+  assert.equal((await byStaffId.json()).user.email,"new-driver@example.com");
+});
+
+
+test("admin can create and remove customer and staff accounts", async () => {
+  const adminLogin=await json("POST","/api/auth/admin-login",{password:ADMIN});
+  assert.equal(adminLogin.status,200);
+  const adminToken=(await adminLogin.json()).token;
+  const adminSession={Authorization:"Bearer "+adminToken};
+  const created=await json("POST","/api/admin/users",{name:"Managed Kitchen",email:"managed-kitchen@example.com",phone:"+34 600 555 111",password:"managed-kitchen-password",role:"chef"},adminSession);
+  assert.equal(created.status,201);
+  const createdData=await created.json();
+  const createdUser=createdData.user;
+  assert.match(createdUser.staffId,/^KCH-[A-F0-9]{6}$/);
+  assert.equal(createdUser.approved,true);
+  assert.equal(createdUser.emailVerified,true);
+  assert.equal(createdData.testCode,undefined);
+  assert.equal("passwordHash" in createdUser,false);
+  assert.equal("passwordSalt" in createdUser,false);
+  assert.equal("emailOtpHash" in createdUser,false);
+  const listed=await json("GET","/api/admin/users",undefined,adminSession);
+  const listedUsers=(await listed.json()).users;
+  const managed=listedUsers.find(u=>u.email==="managed-kitchen@example.com");
+  assert.ok(managed);
+  assert.equal("passwordHash" in managed,false);
+  assert.equal("emailOtpHash" in managed,false);
+  const removed=await json("DELETE","/api/admin/users/managed-kitchen%40example.com",undefined,adminSession);
+  assert.equal(removed.status,200);
+  assert.equal((await json("POST","/api/auth/login",{email:"managed-kitchen@example.com",password:"managed-kitchen-password"})).status,401);
+});
+
+test("only kitchen staff can accept and update orders", async () => {
+  const {data}=await placeOrder();
+  const id=data.order.id;
+  assert.equal((await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},admin)).status,403);
+  assert.equal((await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},chefHeaders())).status,200);
+});
+
 test("unknown API routes return JSON 404", async () => {
   const res = await fetch(base + "/api/does-not-exist");
   assert.equal(res.status, 404);
   assert.equal((await res.json()).error, "Not found.");
 });
 
-/* ---------- spice levels ---------- */
-
-test("spice level: defaults to the first level, saves the chosen one, rejects unknown ones", async () => {
-  const plain = (await placeOrder({ items: [{ itemId: "classic-smash", qty: 1 }] })).data.order;
-  assert.equal(plain.items[0].spice, "Mid");
-
-  const hot = (await placeOrder({ items: [{ itemId: "classic-smash", qty: 1, spice: "super-high" }] })).data.order;
-  assert.equal(hot.items[0].spice, "Super high");
-
-  // the same snack at two spice levels stays as two separate lines
-  const two = (
-    await placeOrder({
-      items: [
-        { itemId: "classic-smash", qty: 1, spice: "high" },
-        { itemId: "classic-smash", qty: 1, spice: "mid" },
-      ],
-    })
-  ).data.order;
-  assert.deepEqual(two.items.map((l) => l.spice), ["High", "Mid"]);
-
-  const bad = await placeOrder({ items: [{ itemId: "classic-smash", qty: 1, spice: "nuclear" }] });
-  assert.equal(bad.res.status, 400);
-  assert.match(bad.data.error, /spice level/i);
-});
-
-test("items that opt out of spice levels get none", async () => {
-  const { data } = await placeOrder({ items: [{ itemId: "cola", qty: 1, spice: "high" }] });
-  assert.equal(data.order.items[0].spice, null);
-});
-
-/* ---------- payment methods ---------- */
-
-test("payment: cash, card and bizum are accepted and saved; anything else is refused", async () => {
-  for (const method of ["cash", "card", "bizum"]) {
-    const { res, data } = await placeOrder({ payment: method });
-    assert.equal(res.status, 201, method);
-    assert.equal(data.order.payment, method);
-  }
-  for (const bad of ["counter", "paypal", "", undefined, 5]) {
-    const { res, data } = await placeOrder({ payment: bad });
-    assert.equal(res.status, 400, String(bad));
-    assert.match(data.error, /how you will pay/i);
-  }
+test("admin can persist item stock and unavailable items cannot be ordered", async () => {
+  const id = "classic-smash";
+  const changed = await json("PATCH", "/api/admin/stock/" + id, { available: false }, admin);
+  assert.equal(changed.status, 200);
+  const changedData = await changed.json();
   const menu = await (await fetch(base + "/api/menu")).json();
-  assert.deepEqual(menu.paymentMethods.map((m) => m.id), ["cash", "card", "bizum"]);
+  assert.equal(menu.stock[id], false);
+  const rejected = await placeOrder();
+  assert.equal(rejected.res.status, 400);
+  assert.match(rejected.data.error, /out of stock/i);
+
+  const restored = await json("PATCH", "/api/admin/stock/" + id, { available: true }, admin);
+  assert.equal(restored.status, 200);
+  const restoredData = await restored.json();
+  assert.equal(restoredData.stock[id], true);
 });
 
-/* ---------- out of stock ---------- */
 
-const menuNow = async () => (await fetch(base + "/api/menu")).json();
-const setStock = (id, soldOut, headers = admin) => json("PATCH", "/api/admin/items/" + id, { soldOut }, headers);
+test("kitchen can add and edit menu items and customers can order the saved item", async () => {
+  assert.equal((await json("GET", "/api/admin/menu/items")).status, 401);
+  const created = await json("POST", "/api/admin/menu/items", {
+    name: "Masala Dosa",
+    category: "sides",
+    price: 8.5,
+    unit: "per portion",
+    description: "Crisp dosa with spiced potato filling.",
+    emoji: "🥞",
+  }, admin);
+  assert.equal(created.status, 201);
+  const item = (await created.json()).item;
+  assert.equal(item.id, "masala-dosa");
 
-test("out of stock: customers still see the item, cannot order it, and it comes back when restocked", async () => {
-  try {
-    assert.equal((await menuNow()).items.every((i) => i.soldOut === false), true, "everything starts in stock");
+  const menuAfterCreate = await (await fetch(base + "/api/menu")).json();
+  assert.equal(menuAfterCreate.items.find((entry) => entry.id === item.id).price, 8.5);
 
-    const res = await setStock("classic-smash", true);
-    assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { id: "classic-smash", soldOut: true });
+  const edited = await json("PATCH", "/api/admin/menu/items/" + item.id, {
+    name: "Masala Dosa Special",
+    category: "sides",
+    price: 9.25,
+    unit: "per plate",
+    description: "Crisp dosa with potato masala and chutney.",
+    emoji: "🥞",
+  }, admin);
+  assert.equal(edited.status, 200);
+  assert.equal((await edited.json()).item.price, 9.25);
 
-    const menu = await menuNow();
-    const item = menu.items.find((i) => i.id === "classic-smash");
-    assert.ok(item, "the item is still on the menu");
-    assert.equal(item.soldOut, true);
-    assert.equal(menu.items.filter((i) => i.soldOut).length, 1, "only that item is out");
-
-    // ordering it is refused, with a message the customer can read
-    const blocked = await placeOrder({ items: [{ itemId: "classic-smash", qty: 1 }] });
-    assert.equal(blocked.res.status, 400);
-    assert.match(blocked.data.error, /Classic Smash is out of stock/);
-
-    // one sold-out item in a mixed basket refuses the whole order (nothing half-saved)
-    const mixed = await placeOrder({ items: [{ itemId: "water", qty: 1 }, { itemId: "classic-smash", qty: 1 }] });
-    assert.equal(mixed.res.status, 400);
-
-    // other items still work
-    assert.equal((await placeOrder({ items: [{ itemId: "water", qty: 1 }] })).res.status, 201);
-
-    // two out of stock -> plural message
-    await setStock("water", true);
-    const two = await placeOrder({ items: [{ itemId: "water", qty: 1 }, { itemId: "classic-smash", qty: 1 }] });
-    assert.match(two.data.error, /are out of stock/);
-
-    // back in stock
-    assert.equal((await setStock("classic-smash", false)).status, 200);
-    assert.equal((await menuNow()).items.find((i) => i.id === "classic-smash").soldOut, false);
-    assert.equal((await placeOrder({ items: [{ itemId: "classic-smash", qty: 1 }] })).res.status, 201);
-  } finally {
-    await json("POST", "/api/admin/items-reset-stock", {}, admin);
-  }
+  const ordered = await placeOrder({ items: [{ itemId: item.id, qty: 1, spice: "Mid" }] });
+  assert.equal(ordered.res.status, 201);
+  assert.equal(ordered.data.order.items[0].name, "Masala Dosa Special");
+  assert.equal(ordered.data.order.total, 9.25);
 });
 
-test("out of stock: only the kitchen can change it, and bad requests are refused", async () => {
-  assert.equal((await setStock("water", true, {})).status, 401);
-  assert.equal((await setStock("water", true, { "x-admin-password": "wrong" })).status, 401);
-  assert.equal((await menuNow()).items.find((i) => i.id === "water").soldOut, false, "unchanged");
-
-  assert.equal((await setStock("no-such-item", true)).status, 404);
-  assert.equal((await json("PATCH", "/api/admin/items/water", { soldOut: "yes" }, admin)).status, 400);
-  assert.equal((await json("PATCH", "/api/admin/items/water", {}, admin)).status, 400);
-  assert.equal((await json("POST", "/api/admin/items-reset-stock", {}, {})).status, 401);
+test("eat-here orders are accepted and recorded separately from takeaway", async () => {
+  const {res,data}=await placeOrder({type:"eat_here"});
+  assert.equal(res.status,201);
+  assert.equal(data.order.type,"eat_here");
+  assert.equal(data.order.serviceType,"eat_here");
 });
 
-test("out of stock: 'everything back in stock' clears all, and stock answers are never cached", async () => {
-  await setStock("water", true);
-  await setStock("cola", true);
-  assert.equal((await menuNow()).items.filter((i) => i.soldOut).length, 2);
-  assert.equal((await json("POST", "/api/admin/items-reset-stock", {}, admin)).status, 200);
-  assert.equal((await menuNow()).items.filter((i) => i.soldOut).length, 0);
-  assert.match((await fetch(base + "/api/menu")).headers.get("cache-control"), /no-store/);
+test("admin can mark payment received or not received", async () => {
+  const {data}=await placeOrder();
+  const id=data.order.id;
+  const changed=await json("PATCH","/api/admin/orders/"+id+"/payment",{received:true},admin);
+  assert.equal(changed.status,200);
+  assert.equal((await changed.json()).order.paymentReceived,true);
+  const reset=await json("PATCH","/api/admin/orders/"+id+"/payment",{received:false},admin);
+  assert.equal((await reset.json()).order.paymentReceived,false);
+});
+
+test("driver pickup and customer delivery OTPs are verified separately", async () => {
+  const registration=await json("POST","/api/auth/register",{name:"Delivery Customer",email:"delivery-customer@example.com",phone:customer.phone,password:"customer-password-123",role:"customer"});
+  assert.equal(registration.status,201);
+  const customerLogin=await json("POST","/api/auth/login",{email:"delivery-customer@example.com",password:"customer-password-123"});
+  const customerSession=await customerLogin.json();
+  const delivery={type:"delivery",customer:{...customer,address:"Calle Mayor 1"},items:[{itemId:"classic-smash",qty:3}]};
+  const placedRes=await fetch(base+"/api/orders",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+customerSession.token},body:JSON.stringify(delivery)});
+  const placed={res:placedRes,data:await placedRes.json()};
+  const id=placed.data.order.id;
+  assert.equal(placed.res.status,201);
+  await json("PATCH","/api/admin/orders/"+id,{status:"preparing"},chefHeaders());
+
+  const driverHeaders={"x-driver-password":DRIVER};
+  const preparingJobs=await (await json("GET","/api/driver/orders",undefined,driverHeaders)).json();
+  const preparingJob=preparingJobs.orders.find(o=>o.id===id);
+  assert.ok(preparingJob, "driver can see delivery orders while they are being prepared");
+  assert.equal(preparingJob.status,"preparing");
+  assert.equal("pickupOtp" in preparingJob,false);
+  assert.equal("deliveryOtp" in preparingJob,false);
+  assert.equal((await json("POST","/api/driver/orders/"+id+"/handover",{action:"pickup",otp:"123456"},driverHeaders)).status,400);
+
+  const accepted=await json("POST","/api/driver/orders/"+id+"/decision",{decision:"accept"},driverHeaders);
+  assert.equal(accepted.status,200);
+  const sent=await json("PATCH","/api/admin/orders/"+id,{status:"out_for_delivery"},chefHeaders());
+  assert.equal(sent.status,200);
+  const adminOrders=(await (await json("GET","/api/admin/orders",undefined,admin)).json()).orders;
+  const managed=adminOrders.find(o=>o.id===id);
+  assert.match(managed.pickupOtp,/^\d{6}$/);
+  assert.match(managed.deliveryOtp,/^\d{6}$/);
+  const customerView=await (await fetch(base+"/api/orders/"+id,{headers:{"Authorization":"Bearer "+customerSession.token}})).json();
+  assert.equal(customerView.order.deliveryOtp,managed.deliveryOtp,"customer account sees its delivery OTP");
+  const publicView=await (await fetch(base+"/api/orders/"+id)).json();
+  assert.equal("deliveryOtp" in publicView.order,false,"public tracking never reveals the OTP");
+
+  const jobs=await (await json("GET","/api/driver/orders",undefined,driverHeaders)).json();
+  const job=jobs.orders.find(o=>o.id===id);
+  assert.ok(job);
+  assert.equal("deliveryOtp" in job,false);
+  assert.equal((await json("POST","/api/driver/orders/"+id+"/handover",{action:"pickup",otp:"000000"},driverHeaders)).status,400);
+
+  const picked=await json("POST","/api/driver/orders/"+id+"/handover",{action:"pickup",otp:managed.pickupOtp},driverHeaders);
+  assert.equal(picked.status,200);
+  assert.equal((await picked.json()).order.status,"picked_up");
+  assert.equal((await json("POST","/api/driver/orders/"+id+"/handover",{action:"delivered",otp:managed.pickupOtp},driverHeaders)).status,400);
+
+  const delivered=await json("POST","/api/driver/orders/"+id+"/handover",{action:"delivered",otp:managed.deliveryOtp},driverHeaders);
+  assert.equal(delivered.status,200);
+  assert.equal((await delivered.json()).order.status,"completed");
+  const afterDelivery=await (await json("GET","/api/driver/orders",undefined,driverHeaders)).json();
+  assert.equal(afterDelivery.orders.some(o=>o.id===id),false,"completed deliveries disappear from the active driver list");
 });

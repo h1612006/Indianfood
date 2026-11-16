@@ -12,13 +12,14 @@ let menu = null;
 const itemsById = new Map();
 
 const money = (n) => `${menu.currency}${n.toFixed(2)}`;
+const isAvailable = (item) => !menu.stock || menu.stock[item.id] !== false;
 const round2 = (n) => Math.round(n * 100) / 100;
 const MAX_QTY = 100; // keep in step with the server
 
 // Photo if the item has one, otherwise its emoji. A broken photo falls back to the emoji.
 function artHtml(item) {
   return item.image
-    ? `<img src="${esc(item.image)}" alt="${esc(item.name)}" ${item.imageWidth ? `width="${item.imageWidth}" height="${item.imageHeight}"` : ""} loading="lazy" data-fallback="${esc(item.emoji || "🍽️")}">`
+    ? `<img src="${esc(item.image)}" alt="${esc(item.name)}" loading="lazy" data-fallback="${esc(item.emoji || "🍽️")}">`
     : esc(item.emoji || "🍽️");
 }
 document.addEventListener(
@@ -39,18 +40,6 @@ function priceHtml(item) {
   return `<span class="price">${money(item.price)}${item.unit ? `<small class="unit"> · ${esc(item.unit)}</small>` : ""}</span>`;
 }
 
-// Spice levels (Mid / High / Super high) come from the menu file.
-const spiceList = () => menu.spiceLevels || [];
-const hasSpice = (item) => spiceList().length > 0 && item.spice !== false;
-const spiceLabel = (id) => (spiceList().find((x) => x.id === id) || {}).name || "";
-
-// Payment methods come from the menu file (cash / card / bizum). Nothing is charged online.
-const payMethods = () => menu.paymentMethods || [];
-function payLabel(id) {
-  const m = payMethods().find((x) => x.id === id);
-  return m ? `${m.emoji ? m.emoji + " " : ""}${m.name}` : id;
-}
-
 function store(key, value) {
   try {
     if (value === undefined) return JSON.parse(localStorage.getItem(key));
@@ -63,18 +52,18 @@ function store(key, value) {
 }
 
 let toastTimer;
-function toast(msg, ms = 2200) {
+function toast(msg) {
   const t = $("#toast");
   t.textContent = msg;
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (t.hidden = true), ms);
+  toastTimer = setTimeout(() => (t.hidden = true), 2200);
 }
 
 /* ---------- state ---------- */
 
 let cart = store("ss_cart") || []; // [{key,itemId,qty,size,addons,removed}]
-let orderType = store("ss_type") === "delivery" ? "delivery" : "pickup";
+let orderType = ["delivery","eat_here"].includes(store("ss_type")) ? store("ss_type") : "pickup";
 let trackTimer = null;
 
 function saveCart() {
@@ -165,15 +154,14 @@ function renderMenu() {
           ${items
             .map(
               (i) => `
-            <button class="card${i.soldOut ? " soldout" : ""}" data-id="${esc(i.id)}" data-cat="${esc(i.category)}" aria-disabled="${i.soldOut ? "true" : "false"}">
-              <div class="card-art${i.image ? " has-img" : ""}">${artHtml(i)}<span class="stock-badge">🚫 Out of stock</span></div>
+            <button class="card" data-id="${esc(i.id)}" data-cat="${esc(i.category)}" ${!isAvailable(i) ? "disabled" : ""}>
+              <div class="card-art${i.image ? " has-img" : ""}">${artHtml(i)}</div>
               <div class="card-body">
                 <div class="card-title"><h3>${esc(i.name)}</h3>${priceHtml(i)}</div>
                 <p class="desc">${esc(i.description)}</p>
                 <div class="card-foot">
                   <span>${tagsHtml(i)}${i.calories ? `<span class="cal">${i.calories} kcal</span>` : ""}</span>
-                  <span class="soldout-note">Out of stock</span>
-                  <span class="add-chip" aria-hidden="true">+</span>
+                  ${!isAvailable(i) ? `<span class="stock-badge">OUT OF STOCK</span>` : `<span class="add-chip" aria-hidden="true">+</span>`}
                 </div>
               </div>
             </button>`
@@ -184,16 +172,7 @@ function renderMenu() {
     })
     .join("");
 
-  $$(".card").forEach((c) =>
-    c.addEventListener("click", () => {
-      const it = itemsById.get(c.dataset.id);
-      if (it && it.soldOut) {
-        toast(`Sorry, ${it.name} is out of stock right now.`, 3500);
-        return;
-      }
-      openItem(c.dataset.id);
-    })
-  );
+  $$(".card").forEach((c) => c.addEventListener("click", () => openItem(c.dataset.id)));
 
   // Highlight the tab of the section currently on screen.
   const tabs = $$(".cat-tab");
@@ -211,64 +190,15 @@ function renderMenu() {
   if (tabs[0]) tabs[0].classList.add("active");
 }
 
-/* ---------- stock ---------- */
-
-function applyStock() {
-  $$(".card").forEach((c) => {
-    const it = itemsById.get(c.dataset.id);
-    const out = !!(it && it.soldOut);
-    c.classList.toggle("soldout", out);
-    c.setAttribute("aria-disabled", String(out));
-  });
-}
-
-// Ask the server which items are out of stock right now (the kitchen can change this any time).
-let menuRefreshing = false;
-async function refreshMenu() {
-  if (menuRefreshing) return;
-  menuRefreshing = true;
-  try {
-    const res = await fetch("/api/menu");
-    if (!res.ok) return;
-    const fresh = await res.json();
-    let changed = false;
-    for (const f of fresh.items) {
-      const it = itemsById.get(f.id);
-      if (it && !!it.soldOut !== !!f.soldOut) {
-        it.soldOut = !!f.soldOut;
-        changed = true;
-      }
-    }
-    if (changed) {
-      applyStock();
-      renderCartBits();
-      if (draft && !$("#itemOverlay").hidden && draft.item.soldOut) {
-        closeOverlay($("#itemOverlay"));
-        toast(`Sorry, ${draft.item.name} just went out of stock.`, 3500);
-      }
-    }
-  } catch (_) {
-    /* offline: keep what we have */
-  } finally {
-    menuRefreshing = false;
-  }
-}
-
 /* ---------- item customization ---------- */
 
-let draft = null; // {item,size,addons:Set,removed:Set,qty,spice}
+let draft = null; // {item,size,addons:Set,removed:Set,qty}
 
 function openItem(id) {
   const item = itemsById.get(id);
+  if (!isAvailable(item)) { toast("Out of stock"); return; }
   const sizes = sizeList(item);
-  draft = {
-    item,
-    size: sizes ? sizes[0].id : null,
-    addons: new Set(),
-    removed: new Set(),
-    qty: 1,
-    spice: hasSpice(item) ? spiceList()[0].id : null,
-  };
+  draft = { item, size: sizes ? sizes[0].id : null, spice: item.spiceLevels ? item.spiceLevels[0] : null, addons: new Set(), removed: new Set(), qty: 1 };
   renderItem();
   openOverlay("#itemOverlay");
 }
@@ -284,17 +214,6 @@ function renderItem() {
     <div class="item-head"><h2 id="itemTitle">${esc(item.name)}</h2>${priceHtml(item)}</div>
     <p class="desc">${esc(item.description)}</p>
     <p>${tagsHtml(item)}${item.calories ? `<span class="cal">${item.calories} kcal</span>` : ""}</p>
-
-    ${
-      hasSpice(item)
-        ? `<div class="group"><h4>Spice level 🌶️</h4><div class="spice-row">${spiceList()
-            .map(
-              (x) => `<label class="opt spice"><input type="radio" name="spice" value="${esc(x.id)}" ${draft.spice === x.id ? "checked" : ""}>
-              <span>${esc(x.name)}</span></label>`
-            )
-            .join("")}</div></div>`
-        : ""
-    }
 
     ${
       sizes
@@ -319,6 +238,12 @@ function renderItem() {
     }
 
     ${
+      (item.spiceLevels || []).length
+        ? `<div class="group"><h4>Spice level</h4>${item.spiceLevels.map((level) => `<label class="opt"><input type="radio" name="spice" value="${esc(level)}" ${draft.spice === level ? "checked" : ""} required><span>${esc(level)}</span></label>`).join("")}</div>`
+        : ""
+    }
+
+    ${
       (item.removals || []).length
         ? `<div class="group"><h4>Remove</h4>${item.removals
             .map(
@@ -339,12 +264,6 @@ function renderItem() {
     </div>`;
 
   const body = $("#itemBody");
-  $$('input[name="spice"]', body).forEach((r) =>
-    r.addEventListener("change", () => {
-      draft.spice = r.value;
-      renderItem();
-    })
-  );
   $$('input[name="size"]', body).forEach((r) =>
     r.addEventListener("change", () => {
       draft.size = r.value;
@@ -373,15 +292,16 @@ function renderItem() {
 }
 
 function lineKey(l) {
-  return [l.itemId, l.spice || "", l.size || "", [...l.addons].sort().join(","), [...l.removed].sort().join(",")].join("|");
+  return [l.itemId, l.size || "", l.spice || "", [...l.addons].sort().join(","), [...l.removed].sort().join(",")].join("|");
 }
 
 function addDraftToCart() {
+  if (!isAvailable(draft.item)) { toast("Out of stock"); closeOverlay($("#itemOverlay")); return; }
   const line = {
     itemId: draft.item.id,
+    spice: draft.spice,
     qty: draft.qty,
     size: draft.size,
-    spice: draft.spice,
     addons: [...draft.addons],
     removed: [...draft.removed],
   };
@@ -401,7 +321,7 @@ function lineMeta(l) {
   const item = itemsById.get(l.itemId);
   const parts = [];
   if (item.unit) parts.push(item.unit);
-  if (l.spice) parts.push("🌶 " + spiceLabel(l.spice));
+  if (l.spice) parts.push("Spice: " + l.spice);
   const sizes = sizeList(item);
   if (sizes) parts.push((sizes.find((s) => s.id === l.size) || sizes[0]).name);
   for (const id of l.addons) {
@@ -434,12 +354,12 @@ function renderCartDrawer() {
     .map((l) => {
       const item = itemsById.get(l.itemId);
       const meta = lineMeta(l);
-      return `<div class="line${item.soldOut ? " out" : ""}" data-key="${esc(l.key)}">
+      const unavailable = !isAvailable(item);
+      return `<div class="line" data-key="${esc(l.key)}">
         <div class="line-emoji">${artHtml(item)}</div>
         <div>
-          <div class="line-name">${esc(item.name)}</div>
+          <div class="line-name">${esc(item.name)}${unavailable ? ` <strong class="stock-badge">OUT OF STOCK</strong>` : ""}</div>
           ${meta.length ? `<div class="line-meta">${meta.map(esc).join(" · ")}</div>` : ""}
-          ${item.soldOut ? `<div class="line-note">🚫 Out of stock — please remove it</div>` : ""}
           <div class="line-actions">
             <div class="stepper">
               <button type="button" data-act="dec" aria-label="Decrease">−</button>
@@ -456,11 +376,9 @@ function renderCartDrawer() {
 
   const t = cartTotals();
   const underMin = orderType === "delivery" && t.subtotal < menu.minDeliveryOrder;
-  const hasOut = cart.some((l) => itemsById.get(l.itemId).soldOut);
+  const hasUnavailable = cart.some((l) => !isAvailable(itemsById.get(l.itemId)));
   let note = "";
-  if (hasOut) {
-    note = `<p class="note warn">Some items are out of stock. Remove them to continue.</p>`;
-  } else if (underMin) {
+  if (underMin) {
     note = `<p class="note warn">Delivery needs a minimum of ${money(menu.minDeliveryOrder)} — add ${money(round2(menu.minDeliveryOrder - t.subtotal))} more, or switch to pickup.</p>`;
   } else if (orderType === "delivery" && t.fee > 0) {
     note = `<p class="note">Add ${money(round2(menu.freeDeliveryOver - t.subtotal))} more for free delivery.</p>`;
@@ -473,7 +391,8 @@ function renderCartDrawer() {
       <div class="row grand"><span>Total</span><span>${money(t.total)}</span></div>
     </div>
     ${note}
-    <button class="btn primary block" id="toCheckout" ${underMin || hasOut ? "disabled" : ""}>Go to checkout</button>`;
+    ${hasUnavailable ? `<p class="note warn">Remove out-of-stock items before checkout.</p>` : ""}
+    <button class="btn primary block" id="toCheckout" ${underMin || hasUnavailable ? "disabled" : ""}>Go to checkout</button>`;
 
   $("#toCheckout", foot).addEventListener("click", openCheckout);
 }
@@ -482,7 +401,6 @@ function wireCart() {
   $("#cartBtn").addEventListener("click", () => {
     renderCartBits();
     openOverlay("#cartOverlay");
-    refreshMenu(); // pick up any item that just went out of stock
   });
 
   $$(".seg-btn").forEach((b) =>
@@ -510,30 +428,23 @@ function wireCart() {
 /* ---------- checkout ---------- */
 
 function openCheckout() {
+  if (!localStorage.getItem("ss_auth_token")) { location.href = "/profile.html?next=order"; return; }
   const t = cartTotals();
   const delivery = orderType === "delivery";
   $("#addressRow").hidden = !delivery;
   $("#checkoutError").hidden = true;
 
-  // Cash / Card / Bizum. The customer pays when the order is collected or delivered.
-  const keep = $('#checkoutForm input[name="payment"]:checked');
-  const wanted = keep ? keep.value : payMethods()[0] && payMethods()[0].id;
-  $("#payOptions").innerHTML = payMethods()
-    .map(
-      (m) => `<label class="radio pay"><input type="radio" name="payment" value="${esc(m.id)}" ${m.id === wanted ? "checked" : ""}>
-        <span class="pay-name">${m.emoji ? esc(m.emoji) + " " : ""}${esc(m.name)}</span></label>`
-    )
-    .join("");
-  updatePayHint();
+  $('#checkoutForm input[name="payment"][value="cash"]').checked = true;
 
   const saved = store("ss_customer") || {};
+  let profile = {}; try { profile = JSON.parse(localStorage.getItem("ss_customer_profile") || "{}"); } catch (_) {}
   const f = $("#checkoutForm").elements;
-  f.name.value = saved.name || "";
-  f.phone.value = saved.phone || "";
-  f.address.value = saved.address || "";
+  f.name.value = saved.name || profile.name || "";
+  f.phone.value = saved.phone || profile.phone || "";
+  f.address.value = saved.address || profile.address || "";
 
   $("#checkoutSummary").innerHTML = `
-    <div class="row"><span>${cartCount()} item${cartCount() === 1 ? "" : "s"} · ${delivery ? "Delivery" : "Pickup"}</span><span>${money(t.subtotal)}</span></div>
+    <div class="row"><span>${cartCount()} item${cartCount() === 1 ? "" : "s"} · ${delivery ? "Delivery" : orderType === "eat_here" ? "Eat here" : "Takeaway"}</span><span>${money(t.subtotal)}</span></div>
     ${delivery ? `<div class="row"><span>Delivery</span><span>${t.fee ? money(t.fee) : "Free"}</span></div>` : ""}
     <div class="row grand"><span>Total</span><span>${money(t.total)}</span></div>`;
 
@@ -541,17 +452,7 @@ function openCheckout() {
   openOverlay("#checkoutOverlay");
 }
 
-function updatePayHint() {
-  const sel = $('#checkoutForm input[name="payment"]:checked');
-  const m = sel && payMethods().find((x) => x.id === sel.value);
-  let text = (m && m.hint && m.hint[orderType]) || "";
-  if (m && m.id === "bizum" && menu.bizumNumber) text += ` Our Bizum number: ${menu.bizumNumber}.`;
-  $("#payHint").textContent = text.trim();
-  $("#payHint").hidden = !text.trim();
-}
-
 function wireCheckout() {
-  $("#payOptions").addEventListener("change", updatePayHint);
   $("#checkoutForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = e.target.elements;
@@ -568,14 +469,7 @@ function wireCheckout() {
         address: orderType === "delivery" ? f.address.value : "",
         notes: f.notes.value,
       },
-      items: cart.map((l) => ({
-        itemId: l.itemId,
-        qty: l.qty,
-        size: l.size,
-        spice: l.spice,
-        addons: l.addons,
-        removed: l.removed,
-      })),
+      items: cart.map((l) => ({ itemId: l.itemId, qty: l.qty, size: l.size, spice: l.spice, addons: l.addons, removed: l.removed })),
     };
 
     btn.disabled = true;
@@ -583,7 +477,7 @@ function wireCheckout() {
     try {
       const res = await fetch("/api/orders", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (localStorage.getItem("ss_auth_token") || "") },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -601,7 +495,6 @@ function wireCheckout() {
     } catch (ex) {
       err.textContent = ex.message;
       err.hidden = false;
-      refreshMenu(); // if the problem was an item going out of stock, show it in the basket
     } finally {
       btn.disabled = false;
       btn.textContent = "Place order";
@@ -612,19 +505,22 @@ function wireCheckout() {
 /* ---------- order tracking ---------- */
 
 const STEP_LABELS = {
-  pickup: ["Received", "Preparing", "Ready for pickup", "Picked up"],
+  pickup: ["Received", "Preparing", "Ready for takeaway", "Picked up"],
+  eat_here: ["Received", "Preparing", "Ready to eat", "Served"],
   delivery: ["Received", "Preparing", "On its way", "Delivered"],
 };
 const STEP_ICONS = ["📝", "👨‍🍳", "🛍️", "✅"];
-const STATUS_INDEX = { received: 0, preparing: 1, ready: 2, completed: 3 };
+const STATUS_INDEX = { received: 0, preparing: 1, ready: 2, out_for_delivery: 2, picked_up: 2, completed: 3 };
 
 function headline(order) {
   const d = order.type === "delivery";
   return {
     received: "We've got your order!",
     preparing: "Your food is on the grill 🔥",
-    ready: d ? "Your order is on its way 🛵" : "Ready for pickup! 🎉",
-    completed: d ? "Delivered — enjoy! 😋" : "Picked up — enjoy! 😋",
+    ready: d ? "Your order is on its way 🛵" : order.type === "eat_here" ? "Your table order is ready! 🎉" : "Ready for pickup! 🎉",
+    out_for_delivery: "Your order is on its way 🛵",
+    picked_up: "Your driver has your order 🛵",
+    completed: d ? "Delivered — enjoy! 😋" : order.type === "eat_here" ? "Served — enjoy! 😋" : "Picked up — enjoy! 😋",
     cancelled: "This order was cancelled",
   }[order.status];
 }
@@ -636,9 +532,9 @@ function renderTracker(order) {
 
   $("#trackBody").innerHTML = `
     <div class="track-id">ORDER ${esc(order.id)}</div>
+    ${order.deliveryOtp && order.type === "delivery" ? `<div class="note" style="margin:12px 0;padding:14px;border:2px dashed #d62828"><strong>Your delivery OTP: <span style="font-size:24px;letter-spacing:4px">${esc(order.deliveryOtp)}</span></strong><br>Give this code to your driver only when your food arrives.</div>` : ""}
     <h2 class="track-title" id="trackTitle">${esc(headline(order))}</h2>
-    <p class="muted">${order.type === "delivery" ? "Delivery" : "Pickup"} · ${esc(payLabel(order.payment))}</p>
-    ${order.payment === "bizum" && menu.bizumNumber ? `<p class="note">Bizum number: <strong>${esc(menu.bizumNumber)}</strong> — send ${money(order.total)} when you collect or receive your order.</p>` : ""}
+    <p class="muted">${order.type === "delivery" ? "Delivery" : order.type === "eat_here" ? "Eat here" : "Takeaway"} · ${({cash:"Cash",card:"Card",bizum:"Bizum",counter:order.type === "delivery" ? "Pay on delivery" : "Pay at the counter"})[order.payment] || esc(order.payment)}</p>
     ${
       cancelled
         ? `<div class="cancelled-banner">Sorry — the restaurant cancelled this order. Please call us or place a new one.</div>`
@@ -653,7 +549,7 @@ function renderTracker(order) {
     <div class="track-items">
       ${order.items
         .map((l) => {
-          const extra = [l.unit, l.spice && "🌶 " + l.spice, l.size, ...l.addons.map((a) => "+ " + a), ...l.removed.map((r) => "No " + r.toLowerCase())].filter(Boolean);
+          const extra = [l.unit, l.size, ...(l.spice ? ["Spice: " + l.spice] : []), ...l.addons.map((a) => "+ " + a), ...l.removed.map((r) => "No " + r.toLowerCase())].filter(Boolean);
           return `<div class="row"><span>${l.qty}× ${esc(l.name)}${extra.length ? ` <span class="muted">(${extra.map(esc).join(", ")})</span>` : ""}</span><span>${money(l.lineTotal)}</span></div>`;
         })
         .join("")}
@@ -668,7 +564,7 @@ function renderTracker(order) {
 }
 
 async function fetchOrder(id) {
-  const res = await fetch("/api/orders/" + encodeURIComponent(id));
+  const res = await fetch("/api/orders/" + encodeURIComponent(id), { headers: { "Authorization": "Bearer " + (localStorage.getItem("ss_auth_token") || "") } });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Order not found.");
   return data.order;
@@ -708,12 +604,38 @@ function showTrackButton() {
   btn.onclick = () => id && openTracker(id);
 }
 
+
+async function refreshStock() {
+  try {
+    const res = await fetch("/api/menu", { cache: "no-store" });
+    if (!res.ok) return;
+    const latest = await res.json();
+    const catalogChanged = JSON.stringify(menu.items) !== JSON.stringify(latest.items) ||
+      JSON.stringify(menu.categories) !== JSON.stringify(latest.categories);
+    const stockChanged = JSON.stringify(menu.stock || {}) !== JSON.stringify(latest.stock || {});
+
+    // Refresh the whole catalogue as well as stock. This makes new or edited
+    // dishes appear on customer pages that were already open.
+    menu = { ...menu, ...latest, stock: latest.stock || {} };
+    if (catalogChanged) {
+      itemsById.clear();
+      menu.items.forEach((item) => itemsById.set(item.id, item));
+    }
+    if (catalogChanged || stockChanged) {
+      renderMenu();
+      renderCartBits();
+    }
+  } catch (_) {
+    // Keep the last known menu and stock state if the network is temporarily unavailable.
+  }
+}
+
 /* ---------- boot ---------- */
 
 async function init() {
   wireOverlays();
   try {
-    const res = await fetch("/api/menu");
+    const res = await fetch("/api/menu", { cache: "no-store" });
     if (!res.ok) throw new Error("Menu request failed");
     menu = await res.json();
   } catch (_) {
@@ -724,13 +646,6 @@ async function init() {
 
   // Drop basket lines for items that no longer exist on the menu.
   cart = cart.filter((l) => itemsById.has(l.itemId));
-  // Baskets saved before spice levels existed: give those lines the default level.
-  for (const l of cart) {
-    const it = itemsById.get(l.itemId);
-    if (hasSpice(it) && !spiceList().some((x) => x.id === l.spice)) l.spice = spiceList()[0].id;
-    if (!hasSpice(it)) l.spice = null;
-    l.key = lineKey(l);
-  }
 
   renderMenu();
   document.dispatchEvent(new CustomEvent("menu:ready", { detail: menu }));
@@ -738,15 +653,10 @@ async function init() {
   wireCheckout();
   renderCartBits();
   showTrackButton();
+  setInterval(refreshStock, 15000);
 
   const fromUrl = new URLSearchParams(location.search).get("order");
   if (fromUrl) openTracker(fromUrl.toUpperCase());
-
-  // Keep "out of stock" up to date while the page stays open.
-  setInterval(refreshMenu, 30000);
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) refreshMenu();
-  });
 }
 
 init();

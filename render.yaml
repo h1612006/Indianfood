@@ -29,3 +29,5 @@ services:
       # You choose this when creating the Blueprint. It is the kitchen screen password.
       - key: ADMIN_PASSWORD
         sync: false
+      - key: DRIVER_PASSWORD
+        sync: false

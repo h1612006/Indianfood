@@ -13,9 +13,6 @@
  *   getOrder(id)                -> order | null
  *   listOrders()                -> orders, newest first
  *   setStatus(id, status, at)   -> updated order | null
- *   getSoldOut()                -> array of menu item ids that are out of stock
- *   setSoldOut(id, soldOut)     mark one item out of stock (true) or back in stock (false)
- *   clearSoldOut()              everything back in stock
  *   close()
  */
 
@@ -29,20 +26,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function createFileStore(dir) {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, "orders.json");
-  const stockFile = path.join(dir, "soldout.json");
   let orders = [];
-  let soldOut = new Set();
+  let stock = {};
+  let menuItems = {};
+  let users = {};
+  const usersFile = path.join(dir, "users.json");
+  const menuItemsFile = path.join(dir, "menu-items.json");
+  const stockFile = path.join(dir, "stock.json");
+  function persistStock() {
+    const tmp = stockFile + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(stock, null, 2));
+    fs.renameSync(tmp, stockFile);
+  }
 
   function persist() {
     const tmp = file + ".tmp";
     fs.writeFileSync(tmp, JSON.stringify(orders, null, 2));
     fs.renameSync(tmp, file);
-  }
-
-  function persistStock() {
-    const tmp = stockFile + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify([...soldOut]));
-    fs.renameSync(tmp, stockFile);
   }
 
   return {
@@ -55,11 +55,9 @@ function createFileStore(dir) {
       } catch (_) {
         orders = [];
       }
-      try {
-        soldOut = new Set(JSON.parse(fs.readFileSync(stockFile, "utf8")));
-      } catch (_) {
-        soldOut = new Set();
-      }
+      try { stock = JSON.parse(fs.readFileSync(stockFile, "utf8")); } catch (_) { stock = {}; }
+      try { menuItems = JSON.parse(fs.readFileSync(menuItemsFile, "utf8")); } catch (_) { menuItems = {}; }
+      try { users = JSON.parse(fs.readFileSync(usersFile, "utf8")); } catch (_) { users = {}; }
     },
 
     async ping() {
@@ -83,16 +81,65 @@ function createFileStore(dir) {
       return orders.find((o) => o.id === id) || null;
     },
 
+    async getUser(email) { return users[email] || null; },
+    async listUsers() { return Object.values(users); },
+    async saveUser(user) {
+      const key = user.email.toLowerCase();
+      if (users[key]) throw Object.assign(new Error("Email already registered"), { code: "USER_EXISTS" });
+      users[key] = user;
+      try { fs.writeFileSync(usersFile + ".tmp", JSON.stringify(users, null, 2)); fs.renameSync(usersFile + ".tmp", usersFile); }
+      catch (e) { delete users[key]; throw e; }
+      return user;
+    },
+    async deleteUser(email) { const key=email.toLowerCase(); if(!users[key]) return false; delete users[key]; fs.writeFileSync(usersFile + ".tmp", JSON.stringify(users, null, 2)); fs.renameSync(usersFile + ".tmp", usersFile); return true; },
+    async updateUser(email, patch) {
+      const key = email.toLowerCase(), current = users[key];
+      if (!current) return null;
+      users[key] = { ...current, ...patch };
+      fs.writeFileSync(usersFile + ".tmp", JSON.stringify(users, null, 2)); fs.renameSync(usersFile + ".tmp", usersFile);
+      return users[key];
+    },
+
+    async listMenuItems() { return Object.values(menuItems); },
+    async saveMenuItem(item) {
+      const before = menuItems[item.id];
+      menuItems[item.id] = item;
+      const tmp = menuItemsFile + ".tmp";
+      try {
+        fs.writeFileSync(tmp, JSON.stringify(menuItems, null, 2));
+        fs.renameSync(tmp, menuItemsFile);
+      } catch (e) {
+        if (before === undefined) delete menuItems[item.id]; else menuItems[item.id] = before;
+        throw e;
+      }
+      return item;
+    },
+
+    async listStock() { return { ...stock }; },
+    async setStock(id, available) {
+      const before = stock[id]; stock[id] = available;
+      try { persistStock(); } catch (e) { if (before === undefined) delete stock[id]; else stock[id] = before; throw e; }
+      return { ...stock };
+    },
+
     async listOrders() {
       return [...orders].reverse();
     },
 
-    async setStatus(id, status, at) {
+    async claimOrder(id, driver, at) {
+      const order = orders.find((o) => o.id === id);
+      if (!order || (order.driverAcceptedBy && order.driverAcceptedBy !== driver)) return null;
+      const before = { ...order };
+      Object.assign(order, { driverAcceptedBy: driver, driverDecision: "accepted", driverAcceptedAt: at, updatedAt: at });
+      try { persist(); } catch (e) { Object.assign(order, before); throw e; }
+      return order;
+    },
+
+    async setStatus(id, status, at, extra = {}) {
       const order = orders.find((o) => o.id === id);
       if (!order) return null;
-      const before = { status: order.status, updatedAt: order.updatedAt };
-      order.status = status;
-      order.updatedAt = at;
+      const before = { ...order };
+      Object.assign(order, extra, { status, updatedAt: at });
       try {
         persist();
       } catch (e) {
@@ -100,33 +147,6 @@ function createFileStore(dir) {
         throw e;
       }
       return order;
-    },
-
-    async getSoldOut() {
-      return [...soldOut];
-    },
-
-    async setSoldOut(id, value) {
-      const before = new Set(soldOut);
-      if (value) soldOut.add(id);
-      else soldOut.delete(id);
-      try {
-        persistStock();
-      } catch (e) {
-        soldOut = before;
-        throw e;
-      }
-    },
-
-    async clearSoldOut() {
-      const before = soldOut;
-      soldOut = new Set();
-      try {
-        persistStock();
-      } catch (e) {
-        soldOut = before;
-        throw e;
-      }
     },
 
     async close() {},
@@ -174,11 +194,22 @@ function createPgStore() {
               updated_at  TIMESTAMPTZ NOT NULL,
               data        JSONB NOT NULL
             );
-            CREATE INDEX IF NOT EXISTS orders_created_idx ON orders (created_at DESC);
-            CREATE TABLE IF NOT EXISTS sold_out (
-              item_id     TEXT PRIMARY KEY,
-              updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+            CREATE TABLE IF NOT EXISTS menu_items (
+              item_id TEXT PRIMARY KEY,
+              data JSONB NOT NULL,
+              updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
+            CREATE TABLE IF NOT EXISTS item_stock (
+              item_id TEXT PRIMARY KEY,
+              available BOOLEAN NOT NULL,
+              updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS app_users (
+              email TEXT PRIMARY KEY,
+              data JSONB NOT NULL,
+              created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS orders_created_idx ON orders (created_at DESC);
           `);
           return;
         } catch (e) {
@@ -214,6 +245,49 @@ function createPgStore() {
       return rows[0] ? toOrder(rows[0]) : null;
     },
 
+    async getUser(email) {
+      const { rows } = await pool.query("SELECT data FROM app_users WHERE email = $1", [email.toLowerCase()]);
+      return rows[0] ? rows[0].data : null;
+    },
+    async listUsers() {
+      const { rows } = await pool.query("SELECT data FROM app_users ORDER BY created_at DESC");
+      return rows.map(r => r.data);
+    },
+    async saveUser(user) {
+      try { await pool.query("INSERT INTO app_users (email, data) VALUES ($1, $2)", [user.email.toLowerCase(), JSON.stringify(user)]); }
+      catch (e) { if (e.code === "23505") throw Object.assign(new Error("Email already registered"), { code: "USER_EXISTS" }); throw e; }
+      return user;
+    },
+    async deleteUser(email) { const result=await pool.query("DELETE FROM app_users WHERE email = $1", [email.toLowerCase()]); return result.rowCount>0; },
+    async updateUser(email, patch) {
+      const current = await this.getUser(email);
+      if (!current) return null;
+      const updated = { ...current, ...patch };
+      const { rows } = await pool.query("UPDATE app_users SET data = $2 WHERE email = $1 RETURNING data", [email.toLowerCase(), JSON.stringify(updated)]);
+      return rows[0] ? rows[0].data : null;
+    },
+
+    async listMenuItems() {
+      const { rows } = await pool.query("SELECT data FROM menu_items ORDER BY item_id");
+      return rows.map((r) => r.data);
+    },
+    async saveMenuItem(item) {
+      await pool.query(
+        "INSERT INTO menu_items (item_id, data) VALUES ($1, $2) ON CONFLICT (item_id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()",
+        [item.id, JSON.stringify(item)]
+      );
+      return item;
+    },
+
+    async listStock() {
+      const { rows } = await pool.query("SELECT item_id, available FROM item_stock");
+      return Object.fromEntries(rows.map((r) => [r.item_id, r.available]));
+    },
+    async setStock(id, available) {
+      await pool.query("INSERT INTO item_stock (item_id, available) VALUES ($1, $2) ON CONFLICT (item_id) DO UPDATE SET available = EXCLUDED.available, updated_at = NOW()", [id, available]);
+      return this.listStock();
+    },
+
     async listOrders() {
       const { rows } = await pool.query(
         "SELECT status, created_at, updated_at, data FROM orders ORDER BY created_at DESC LIMIT 500"
@@ -221,33 +295,27 @@ function createPgStore() {
       return rows.map(toOrder);
     },
 
-    async setStatus(id, status, at) {
+    async claimOrder(id, driver, at) {
       const { rows } = await pool.query(
-        `UPDATE orders SET status = $2, updated_at = $3 WHERE id = $1
+        `UPDATE orders SET updated_at = $3::timestamptz,
+         data = data || jsonb_build_object('driverAcceptedBy', $2::text, 'driverDecision', 'accepted', 'driverAcceptedAt', $3::timestamptz, 'updatedAt', $3::timestamptz)
+         WHERE id = $1 AND (data->>'driverAcceptedBy' IS NULL OR data->>'driverAcceptedBy' = $2)
          RETURNING status, created_at, updated_at, data`,
-        [id, status, at]
+        [id, driver, at]
       );
       return rows[0] ? toOrder(rows[0]) : null;
     },
 
-    async getSoldOut() {
-      const { rows } = await pool.query("SELECT item_id FROM sold_out");
-      return rows.map((r) => r.item_id);
-    },
-
-    async setSoldOut(id, value) {
-      if (value) {
-        await pool.query(
-          "INSERT INTO sold_out (item_id) VALUES ($1) ON CONFLICT (item_id) DO UPDATE SET updated_at = now()",
-          [id]
-        );
-      } else {
-        await pool.query("DELETE FROM sold_out WHERE item_id = $1", [id]);
-      }
-    },
-
-    async clearSoldOut() {
-      await pool.query("DELETE FROM sold_out");
+    async setStatus(id, status, at, extra = {}) {
+      const current = await this.getOrder(id);
+      if (!current) return null;
+      const updated = { ...current, ...extra, status, updatedAt: at };
+      const { rows } = await pool.query(
+        `UPDATE orders SET status = $2, updated_at = $3, data = $4 WHERE id = $1
+         RETURNING status, created_at, updated_at, data`,
+        [id, status, at, JSON.stringify(updated)]
+      );
+      return rows[0] ? toOrder(rows[0]) : null;
     },
 
     async close() {

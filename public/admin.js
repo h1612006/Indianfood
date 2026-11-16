@@ -6,16 +6,19 @@ const esc = (s) =>
 
 let password = sessionStorage.getItem("ss_admin") || "";
 let orders = [];
-let menu = null; // the menu incl. which items are out of stock
-let tab = "orders";
 let filter = "active";
-let stockFilter = "all";
 let currency = "€";
 let timer = null;
 let knownIds = new Set();
 let firstLoad = true;
+let menuItems = [];
+let stock = {};
+let menuCategories = [];
+let editingMenuId = null;
+let staffApplications = [];
+let activeSection = "ordersPanel";
 
-const ACTIVE = ["received", "preparing", "ready"];
+const ACTIVE = ["received", "preparing", "ready", "out_for_delivery", "picked_up"];
 
 const FILTERS = [
   { id: "active", label: "Active" },
@@ -26,7 +29,7 @@ const FILTERS = [
 async function api(path, options = {}) {
   const res = await fetch(path, {
     ...options,
-    headers: { "Content-Type": "application/json", "x-admin-password": password, ...(options.headers || {}) },
+    headers: { "Content-Type": "application/json", "x-admin-password": password, "Authorization": localStorage.getItem("ss_chef_token") ? "Bearer " + localStorage.getItem("ss_chef_token") : (localStorage.getItem("ss_admin_token") ? "Bearer " + localStorage.getItem("ss_admin_token") : ""), ...(options.headers || {}) },
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401) throw Object.assign(new Error(data.error || "Unauthorized"), { auth: true });
@@ -34,46 +37,52 @@ async function api(path, options = {}) {
   return data;
 }
 
-/* ---------- login / layout ---------- */
-
 function showLogin(msg) {
   clearTimeout(timer);
   $("#board").hidden = true;
-  $("#stockBoard").hidden = true;
-  $("#tabs").hidden = true;
   $("#logout").hidden = true;
+  $("#kitchenNav").hidden = true;
+  $("#screenTitle").textContent = "Spice Smash staff access";
   $("#loginBox").hidden = false;
   const e = $("#loginErr");
   e.hidden = !msg;
   e.textContent = msg || "";
 }
 
-function showApp() {
+function showBoard() {
   $("#loginBox").hidden = true;
+  $("#board").hidden = false;
   $("#logout").hidden = false;
-  $("#tabs").hidden = false;
-  $("#board").hidden = tab !== "orders";
-  $("#stockBoard").hidden = tab !== "stock";
-  document.querySelectorAll(".a-tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  const chefOnly = !!localStorage.getItem("ss_chef_token");
+  const adminOnly = !!localStorage.getItem("ss_admin_token") || !!password;
+  $("#kitchenNav").hidden = !adminOnly;
+  $("#screenTitle").textContent = adminOnly ? "⚙️ Spice Smash Admin" : "🔥 Kitchen staff";
+  $("#ordersPanel").hidden = adminOnly;
+  if (chefOnly) activeSection = "ordersPanel";
+  else if (adminOnly && (!activeSection || activeSection === "ordersPanel")) activeSection = (location.hash || "").slice(1) || "stockPanel";
+  showSection(activeSection);
 }
-
-/* ---------- loading ---------- */
-
-async function loadMenu() {
-  const res = await fetch("/api/menu", { cache: "no-store" });
-  if (!res.ok) throw new Error("Could not load the menu");
-  menu = await res.json();
-  currency = menu.currency || currency;
+function showSection(sectionId) {
+  const adminOnly = !!localStorage.getItem("ss_admin_token") || !!password;
+  const allowed = adminOnly ? ["stockPanel", "menuPanel", "staffApprovals"] : ["ordersPanel"];
+  if (!allowed.includes(sectionId)) sectionId = adminOnly ? "stockPanel" : "ordersPanel";
+  activeSection = sectionId;
+  document.querySelectorAll(".kitchen-section").forEach(section => { section.hidden = section.id !== activeSection; });
+  document.querySelectorAll("#kitchenNav [data-section]").forEach(button => {
+    button.classList.toggle("active", button.dataset.section === activeSection);
+    button.setAttribute("aria-current", button.dataset.section === activeSection ? "page" : "false");
+  });
+  if (adminOnly) history.replaceState(null, "", "#" + sectionId);
 }
-
 async function load() {
   clearTimeout(timer);
   try {
-    const [data] = await Promise.all([api("/api/admin/orders"), loadMenu()]);
+    const data = await api("/api/admin/orders");
     orders = data.orders;
-    showApp();
+    showBoard();
     $("#boardErr").hidden = true;
-    $("#stockErr").hidden = true;
+    try { await loadStock(); } catch (stockError) { $("#stockItems").textContent = "Could not load stock: " + stockError.message; }
+    if (!localStorage.getItem("ss_chef_token")) { try { await loadStaffApplications(); await loadStaffDirectory(); } catch (staffError) { $("#staffApplicationsList").textContent = "Could not load staff: " + staffError.message; } }
 
     const newOnes = orders.filter((o) => !knownIds.has(o.id));
     if (!firstLoad && newOnes.length) beep();
@@ -81,7 +90,6 @@ async function load() {
     firstLoad = false;
 
     render();
-    renderStock();
   } catch (ex) {
     if (ex.auth) {
       sessionStorage.removeItem("ss_admin");
@@ -89,12 +97,82 @@ async function load() {
       showLogin(ex.message);
       return;
     }
-    for (const id of ["#boardErr", "#stockErr"]) {
-      $(id).textContent = "Connection problem — retrying… (" + ex.message + ")";
-      $(id).hidden = false;
-    }
+    $("#boardErr").textContent = "Connection problem — retrying… (" + ex.message + ")";
+    $("#boardErr").hidden = false;
   }
   timer = setTimeout(load, 5000);
+}
+
+async function loadStock() {
+  const [stockData, menuData] = await Promise.all([
+    api("/api/admin/stock"),
+    api("/api/admin/menu/items"),
+  ]);
+  stock = stockData.stock || {};
+  menuItems = menuData.items || [];
+  menuCategories = menuData.categories || [];
+  renderStock();
+  renderMenuItems();
+}
+
+function renderStock() {
+  $("#stockItems").innerHTML = menuItems.map((item) => {
+    const available = stock[item.id] !== false;
+    return `<div class="stock-row"><strong>${esc(item.name)}</strong><button class="stock-toggle ${available ? "" : "off"}" data-stock="${esc(item.id)}" data-available="${available}">${available ? "In stock" : "Out of stock"}</button></div>`;
+  }).join("");
+}
+
+function renderMenuItems() {
+  $("#menuItemsEditor").innerHTML = menuItems.map((item) => {
+    const category = menuCategories.find((c) => c.id === item.category);
+    return `<div class="menu-item-row">
+      <div><strong>${esc(item.emoji || "🍽️")} ${esc(item.name)}</strong><small>${esc(category ? category.name : item.category)} · ${esc(item.unit || "standard portion")}</small></div>
+      <strong class="item-price">${money(item.price)}</strong>
+      <button type="button" class="btn" data-edit-menu="${esc(item.id)}">Edit</button>
+    </div>`;
+  }).join("") || '<p class="empty-a">No menu items yet.</p>';
+}
+
+function openMenuEditor(item = null) {
+  editingMenuId = item ? item.id : null;
+  const form = $("#menuItemForm");
+  $("#menuEditorTitle").textContent = item ? "Edit menu item" : "Add menu item";
+  $("#saveMenuItem").textContent = item ? "Save changes" : "Add item";
+  form.elements.name.value = item ? item.name : "";
+  form.elements.category.innerHTML = menuCategories.map((category) =>
+    `<option value="${esc(category.id)}">${esc(category.emoji || "")} ${esc(category.name)}</option>`
+  ).join("");
+  form.elements.category.value = item ? item.category : (menuCategories[0] && menuCategories[0].id) || "";
+  form.elements.price.value = item ? item.price : "";
+  form.elements.unit.value = item ? item.unit || "" : "";
+  form.elements.description.value = item ? item.description || "" : "";
+  form.elements.image.value = item ? item.image || "" : "";
+  form.elements.emoji.value = item ? item.emoji || "" : "🍽️";
+  $("#menuFormError").hidden = true;
+  $("#menuEditor").hidden = false;
+  $("#menuEditor").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function setStock(id, available, button) {
+  button.disabled = true;
+  try { const data = await api("/api/admin/stock/" + encodeURIComponent(id), { method:"PATCH", body:JSON.stringify({available}) }); stock = data.stock || stock; renderStock(); }
+  catch (ex) { alert(ex.message); button.disabled = false; }
+}
+
+
+async function loadStaffApplications() {
+  const data=await api("/api/admin/staff-applications");
+  staffApplications=data.applications||[];
+  $("#staffApplicationsList").innerHTML=staffApplications.map(u=>"<div class='menu-item-row'><div><strong>"+esc(u.name)+"</strong><small>"+esc(u.email)+" · "+esc(u.role)+" · "+(u.emailVerified?"Email verified":"Email not verified")+" · Applied "+esc(new Date(u.createdAt).toLocaleDateString())+"</small></div><button class='btn primary' data-staff-approve='true' data-email='"+esc(u.email)+"'>Approve</button><button class='btn danger' data-staff-approve='false' data-email='"+esc(u.email)+"'>Reject</button></div>").join("")||"<p class='empty-a'>No pending staff applications.</p>";
+}
+async function loadStaffDirectory() {
+  const data=await api("/api/admin/users");
+  const staff=(data.users||[]).filter(u=>["chef","driver"].includes(u.role));
+  $("#staffDirectoryList").innerHTML=staff.map(u=>"<article class='staff-card'><strong>"+esc(u.name||"")+"</strong><small>Role: "+esc(u.role)+" · ID: "+esc(u.staffId||"Not assigned")+"</small><small>Email: "+esc(u.email)+"</small><small>Phone: "+esc(u.phone||"Not provided")+"</small><small>Address: "+esc(u.address||"Not provided")+"</small><small>Email: "+(u.emailVerified?"Verified":"Not verified")+" · Account: "+(u.approved?"Approved":"Pending / rejected")+"</small><small>Created: "+(u.createdAt?esc(new Date(u.createdAt).toLocaleString()):"—")+"</small></article>").join("")||"<p class='empty-a'>No staff accounts yet.</p>";
+}
+async function reviewStaff(email, approved) {
+  try { await api("/api/admin/staff-applications/"+encodeURIComponent(email),{method:"PATCH",body:JSON.stringify({approved})}); await loadStaffApplications(); }
+  catch(ex) { alert(ex.message); }
 }
 
 function beep() {
@@ -123,26 +201,14 @@ function timeAgo(iso) {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function payLabel(o) {
-  const m = menu && (menu.paymentMethods || []).find((x) => x.id === o.payment);
-  if (m) return (m.emoji ? m.emoji + " " : "") + m.name;
-  return o.payment; // older orders
-}
-
-function spiceClass(name) {
-  return String(name).toLowerCase().replace(/[^a-z]+/g, "-");
-}
-
 function nextAction(o) {
   const delivery = o.type === "delivery";
   return {
-    received: { to: "preparing", label: "Start preparing" },
-    preparing: { to: "ready", label: delivery ? "Out for delivery" : "Mark ready" },
-    ready: { to: "completed", label: delivery ? "Mark delivered" : "Mark picked up" },
+    received: { to: "preparing", label: "Accept order · start preparing" },
+    preparing: { to: delivery ? "out_for_delivery" : "ready", label: delivery ? "Out for delivery · generate OTPs" : "Mark ready" },
+    ready: { to: "completed", label: o.type === "eat_here" ? "Mark served" : "Mark picked up" },
   }[o.status];
 }
-
-/* ---------- orders tab ---------- */
 
 function render() {
   const counts = {
@@ -155,7 +221,6 @@ function render() {
       (f) => `<button class="cat-tab ${filter === f.id ? "active" : ""}" data-filter="${f.id}">${f.label} (${counts[f.id]})</button>`
     ).join("") + `<span class="status-line">Auto-refreshing every 5s</span>`;
 
-  $("#tabOrders").textContent = counts.active ? `Orders (${counts.active} active)` : "Orders";
   document.title = counts.active ? `(${counts.active}) Kitchen screen` : "Kitchen screen";
 
   const shown = orders
@@ -164,7 +229,7 @@ function render() {
     .sort((a, b) => (filter === "active" ? new Date(a.createdAt) - new Date(b.createdAt) : 0));
 
   if (!shown.length) {
-    $("#orders").innerHTML = `<div class="empty-a" style="grid-column:1/-1">No ${filter === "all" ? "" : filter + " "}orders right now. 🍽️</div>`;
+    $("#orders").innerHTML = `<div class="empty-a" style="grid-column:1/-1">No ${filter === "all" ? "" : filter + " "}orders right now. 🍔</div>`;
     return;
   }
 
@@ -172,36 +237,42 @@ function render() {
     .map((o) => {
       const act = nextAction(o);
       const final = !ACTIVE.includes(o.status);
+      const kitchenCanUpdate = !!localStorage.getItem("ss_chef_token");
       return `<article class="o-card ${esc(o.status)}" data-id="${esc(o.id)}">
         <div class="o-head"><span class="o-id">${esc(o.id)}</span><span class="o-time">${esc(timeAgo(o.createdAt))}</span></div>
         <div>
-          <span class="o-pill ${esc(o.type)}">${o.type === "delivery" ? "🛵 Delivery" : "🏪 Pickup"}</span>
-          <span class="o-pill">${esc(o.status)}</span>
-          <span class="o-pill pay">${esc(payLabel(o))}</span>
+          <span class="o-pill ${esc(o.type)}">${o.type === "delivery" ? "🛵 Delivery" : o.type === "eat_here" ? "🍽️ Eat here" : "🥡 Takeaway"}</span>
+          <span class="o-pill">${esc(o.status.replaceAll("_", " "))}</span>
+          <span class="o-pill">${({cash:"Cash",card:"Card",bizum:"Bizum",counter:"Pay at counter"})[o.payment] || esc(o.payment)}</span>
         </div>
         <div class="o-cust">
           <strong>${esc(o.customer.name)}</strong> · ${esc(o.customer.phone)}
-          ${o.type === "delivery" ? `<br>📍 ${esc(o.customer.address)}` : ""}
+          ${o.type === "delivery" ? `<br>📍 ${esc(o.customer.address)}<br>🚚 Driver: ${esc(o.driverAcceptedBy || "Awaiting acceptance")}` : ""}
         </div>
         <div class="o-items">
           ${o.items
             .map((l) => {
-              const extra = [l.unit, l.size, ...l.addons.map((a) => "+ " + a), ...l.removed.map((r) => "NO " + r.toUpperCase())].filter(Boolean);
-              return `<div class="l"><strong>${l.qty}×</strong> ${esc(l.name)}${
-                l.spice ? `<span class="spice-pill ${esc(spiceClass(l.spice))}">🌶 ${esc(l.spice)}</span>` : ""
-              }${extra.length ? `<span class="m">${extra.map(esc).join(" · ")}</span>` : ""}</div>`;
+              const extra = [l.unit, l.size, ...(l.spice ? ["Spice: " + l.spice] : []), ...l.addons.map((a) => "+ " + a), ...l.removed.map((r) => "NO " + r.toUpperCase())].filter(Boolean);
+              return `<div class="l"><strong>${l.qty}×</strong> ${esc(l.name)}${extra.length ? `<span class="m">${extra.map(esc).join(" · ")}</span>` : ""}</div>`;
             })
             .join("")}
         </div>
         ${o.customer.notes ? `<div class="o-notes">📝 ${esc(o.customer.notes)}</div>` : ""}
         <div class="o-foot"><span>Total</span><span>${money(o.total)}</span></div>
+        <div class="o-notes">Payment: <strong>${o.paymentReceived ? "RECEIVED ✓" : "NOT RECEIVED"}</strong> · <button class="link-btn" data-payment="${o.paymentReceived ? "false" : "true"}">${o.paymentReceived ? "Mark not received" : "Mark received"}</button></div>
+        ${o.status === "out_for_delivery" || o.status === "picked_up" ? `<div class="o-notes"><strong>Handover codes — manager only</strong><br>Pickup code: <strong>${esc(o.pickupOtp || "Already confirmed")}</strong><br>Customer delivery code: <strong>${esc(o.deliveryOtp || "Already confirmed")}</strong><br><small>Share the pickup code with the driver and the delivery code with the customer. Never show the customer code to the driver.</small></div>` : ""}
         <div class="o-actions">
-          ${act ? `<button class="btn primary" data-set="${act.to}">${esc(act.label)}</button>` : ""}
-          ${final ? `<button class="btn" data-set="received">Reopen</button>` : `<button class="btn danger" data-set="cancelled">Cancel</button>`}
+          ${act && kitchenCanUpdate ? `<button class="btn primary" data-set="${act.to}">${esc(act.label)}</button>` : ""}
+          ${kitchenCanUpdate ? (final ? `<button class="btn" data-set="received">Reopen</button>` : `<button class="btn danger" data-set="cancelled">Cancel</button>`) : ""}
         </div>
       </article>`;
     })
     .join("");
+}
+
+async function setPayment(id, received) {
+  try { await api("/api/admin/orders/" + encodeURIComponent(id) + "/payment", {method:"PATCH", body:JSON.stringify({received})}); load(); }
+  catch (ex) { alert(ex.message); }
 }
 
 async function setStatus(id, status) {
@@ -214,88 +285,43 @@ async function setStatus(id, status) {
   }
 }
 
-/* ---------- menu & stock tab ---------- */
-
-function stockRow(i) {
-  const out = !!i.soldOut;
-  const thumb = i.image
-    ? `<img class="s-thumb" src="${esc(i.image)}" alt="" loading="lazy">`
-    : `<span class="s-thumb" aria-hidden="true">${esc(i.emoji || "🍽️")}</span>`;
-  return `<div class="s-row${out ? " out" : ""}" data-id="${esc(i.id)}">
-    ${thumb}
-    <div class="s-info"><strong>${esc(i.name)}</strong><span>${money(i.price)}${i.unit ? " · " + esc(i.unit) : ""}</span></div>
-    <span class="s-pill ${out ? "out" : "in"}">${out ? "Out of stock" : "In stock"}</span>
-    <button class="btn ${out ? "good" : "danger"}" data-stock="${out ? "in" : "out"}">${out ? "Back in stock" : "Mark out of stock"}</button>
-  </div>`;
-}
-
-function renderStock() {
-  if (!menu) return;
-  const outCount = menu.items.filter((i) => i.soldOut).length;
-  $("#tabStock").textContent = outCount ? `Menu & stock (${outCount} out)` : "Menu & stock";
-
-  $("#stockFilters").innerHTML = [
-    { id: "all", label: `All (${menu.items.length})` },
-    { id: "out", label: `Out of stock (${outCount})` },
-  ]
-    .map((f) => `<button class="cat-tab ${stockFilter === f.id ? "active" : ""}" data-sfilter="${f.id}">${f.label}</button>`)
-    .join("");
-  $("#stockSummary").textContent = outCount
-    ? `${outCount} item${outCount === 1 ? "" : "s"} out of stock — customers can see them but cannot order them.`
-    : "Everything is in stock.";
-  $("#resetStock").hidden = outCount === 0;
-
-  const sections = menu.categories
-    .map((c) => {
-      const items = menu.items.filter((i) => i.category === c.id && (stockFilter === "all" || i.soldOut));
-      if (!items.length) return "";
-      return `<h3 class="s-cat">${esc(c.emoji || "")} ${esc(c.name)}</h3><div class="s-list">${items.map(stockRow).join("")}</div>`;
-    })
-    .join("");
-  $("#stockList").innerHTML = sections || `<div class="empty-a">No items out of stock. 🎉</div>`;
-}
-
-async function setStock(id, soldOut) {
-  // Show the change straight away; the server answer (or an error) follows.
-  const item = menu && menu.items.find((i) => i.id === id);
-  if (item) {
-    item.soldOut = soldOut;
-    renderStock();
-  }
+async function boot() {
+  // The menu file tells us which currency symbol to show.
   try {
-    await api("/api/admin/items/" + encodeURIComponent(id), { method: "PATCH", body: JSON.stringify({ soldOut }) });
-    load();
-  } catch (ex) {
-    if (item) item.soldOut = !soldOut;
-    renderStock();
-    alert(ex.message);
+    const menu = await (await fetch("/api/menu")).json();
+    currency = menu.currency || currency;
+    menuItems = menu.items || [];
+  } catch (_) {
+    /* keep default */
   }
-}
 
-/* ---------- start ---------- */
-
-function boot() {
-  $("#loginForm").addEventListener("submit", (e) => {
+  $("#loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    password = $("#pw").value;
-    sessionStorage.setItem("ss_admin", password);
-    firstLoad = true;
-    load();
-    // If the password was wrong, load() sends us back to the login form with a message.
+    const email=$("#staffEmail").value.trim();
+    password=$("#pw").value;
+    if(email){
+      try{
+        const r=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password})});
+        const d=await r.json();
+        if(!r.ok) throw new Error((d.error||"Login failed.")+(d.verificationRequired?" Open the main account page (/profile.html) to enter your email code.":""));
+        if(d.user.role!=="chef") throw new Error("This account is not an approved kitchen staff account.");
+        localStorage.setItem("ss_chef_token",d.token); password="";
+      }catch(ex){showLogin(ex.message);return;}
+    }else{sessionStorage.setItem("ss_admin",password);}
+    firstLoad=true;load();
   });
 
   $("#logout").addEventListener("click", () => {
     sessionStorage.removeItem("ss_admin");
+    ["ss_auth_token","ss_chef_token","ss_driver_token","ss_admin_token","ss_customer_profile"].forEach(k=>localStorage.removeItem(k));
     password = "";
     $("#pw").value = "";
     showLogin();
   });
 
-  $("#tabs").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-tab]");
-    if (!b) return;
-    tab = b.dataset.tab;
-    showApp();
+  $("#kitchenNav").addEventListener("click", (e) => {
+    const button = e.target.closest("[data-section]");
+    if (button && !button.hidden) showSection(button.dataset.section);
   });
 
   $("#filters").addEventListener("click", (e) => {
@@ -306,37 +332,62 @@ function boot() {
     }
   });
 
+  $("#staffApplications").addEventListener("click", e => { const b=e.target.closest("[data-staff-approve]"); if(b) reviewStaff(b.dataset.email,b.dataset.staffApprove==="true"); });
+  $("#staffApprovals").addEventListener("click", e => { const b=e.target.closest("[data-staff-view]"); if(!b)return; const directory=b.dataset.staffView==="directory"; $("#staffApplications").hidden=directory; $("#staffDirectory").hidden=!directory; document.querySelectorAll("[data-staff-view]").forEach(x=>x.classList.toggle("active",x===b)); if(directory)loadStaffDirectory().catch(err=>$("#staffDirectoryList").textContent=err.message); });
+
+  $("#stockItems").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-stock]");
+    if (b) setStock(b.dataset.stock, b.dataset.available !== "true", b);
+  });
+
+  $("#newMenuItem").addEventListener("click", () => openMenuEditor());
+  $("#cancelMenuEdit").addEventListener("click", () => { $("#menuEditor").hidden = true; editingMenuId = null; });
+  $("#menuItemsEditor").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-edit-menu]");
+    if (b) openMenuEditor(menuItems.find((item) => item.id === b.dataset.editMenu));
+  });
+  $("#menuItemForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const body = {
+      name: form.elements.name.value.trim(),
+      category: form.elements.category.value,
+      price: Number(form.elements.price.value),
+      unit: form.elements.unit.value.trim(),
+      description: form.elements.description.value.trim(),
+      image: form.elements.image.value.trim(),
+      emoji: form.elements.emoji.value.trim() || "🍽️",
+    };
+    const save = $("#saveMenuItem");
+    const error = $("#menuFormError");
+    save.disabled = true;
+    error.hidden = true;
+    try {
+      const path = editingMenuId
+        ? "/api/admin/menu/items/" + encodeURIComponent(editingMenuId)
+        : "/api/admin/menu/items";
+      await api(path, { method: editingMenuId ? "PATCH" : "POST", body: JSON.stringify(body) });
+      $("#menuEditor").hidden = true;
+      editingMenuId = null;
+      await loadStock();
+      alert("Menu item saved. It is now available on the customer menu.");
+    } catch (ex) {
+      error.textContent = ex.message;
+      error.hidden = false;
+    } finally {
+      save.disabled = false;
+    }
+  });
+
   $("#orders").addEventListener("click", (e) => {
+    const pay = e.target.closest("[data-payment]");
+    if (pay) { setPayment(pay.closest(".o-card").dataset.id, pay.dataset.payment === "true"); return; }
     const b = e.target.closest("[data-set]");
     if (!b) return;
     setStatus(b.closest(".o-card").dataset.id, b.dataset.set);
   });
 
-  $("#stockFilters").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-sfilter]");
-    if (b) {
-      stockFilter = b.dataset.sfilter;
-      renderStock();
-    }
-  });
-
-  $("#stockList").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-stock]");
-    if (!b) return;
-    setStock(b.closest(".s-row").dataset.id, b.dataset.stock === "out");
-  });
-
-  $("#resetStock").addEventListener("click", async () => {
-    if (!confirm("Put every item back in stock?")) return;
-    try {
-      await api("/api/admin/items-reset-stock", { method: "POST", body: "{}" });
-      load();
-    } catch (ex) {
-      alert(ex.message);
-    }
-  });
-
-  if (password) load();
+  if (password || localStorage.getItem("ss_chef_token") || localStorage.getItem("ss_admin_token")) load();
   else showLogin();
 }
 
