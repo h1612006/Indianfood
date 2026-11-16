@@ -36,6 +36,9 @@ services:
       PORT: "3000"
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in your .env file}
       DRIVER_PASSWORD: ${DRIVER_PASSWORD:?Set DRIVER_PASSWORD in your .env file}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      PUBLIC_URL: ${PUBLIC_URL:-}
       PGHOST: db
       PGPORT: "5432"
       PGUSER: spicesmash
