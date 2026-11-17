@@ -16,7 +16,7 @@ let stock = {};
 let menuCategories = [];
 let editingMenuId = null;
 let staffApplications = [];
-let activeSection = "ordersPanel";
+let activeSection = "";
 
 const ACTIVE = ["received", "preparing", "ready", "out_for_delivery", "picked_up"];
 
@@ -42,6 +42,7 @@ function showLogin(msg) {
   $("#board").hidden = true;
   $("#logout").hidden = true;
   $("#kitchenNav").hidden = true;
+  $("#menuBtn").hidden = true;
   $("#screenTitle").textContent = "Spice Smash staff access";
   $("#loginBox").hidden = false;
   const e = $("#loginErr");
@@ -56,16 +57,17 @@ function showBoard() {
   const chefOnly = !!localStorage.getItem("ss_chef_token");
   const adminOnly = !!localStorage.getItem("ss_admin_token") || !!password;
   $("#kitchenNav").hidden = !adminOnly;
+  $("#menuBtn").hidden = !adminOnly;
+  $("#dashboard").hidden = !adminOnly;
   $("#screenTitle").textContent = adminOnly ? "⚙️ Spice Smash Admin" : "🔥 Kitchen staff";
-  $("#ordersPanel").hidden = adminOnly;
   if (chefOnly) activeSection = "ordersPanel";
-  else if (adminOnly && (!activeSection || activeSection === "ordersPanel")) activeSection = (location.hash || "").slice(1) || "stockPanel";
+  else if (adminOnly && !activeSection) activeSection = (location.hash || "").slice(1) || "ordersPanel";
   showSection(activeSection);
 }
 function showSection(sectionId) {
   const adminOnly = !!localStorage.getItem("ss_admin_token") || !!password;
-  const allowed = adminOnly ? ["stockPanel", "menuPanel", "staffApprovals"] : ["ordersPanel"];
-  if (!allowed.includes(sectionId)) sectionId = adminOnly ? "stockPanel" : "ordersPanel";
+  const allowed = adminOnly ? ["ordersPanel", "stockPanel", "menuPanel", "staffApprovals", "clientPanel"] : ["ordersPanel"];
+  if (!allowed.includes(sectionId)) sectionId = "ordersPanel";
   activeSection = sectionId;
   document.querySelectorAll(".kitchen-section").forEach(section => { section.hidden = section.id !== activeSection; });
   document.querySelectorAll("#kitchenNav [data-section]").forEach(button => {
@@ -73,7 +75,75 @@ function showSection(sectionId) {
     button.setAttribute("aria-current", button.dataset.section === activeSection ? "page" : "false");
   });
   if (adminOnly) history.replaceState(null, "", "#" + sectionId);
+  if (adminOnly && sectionId === "clientPanel") loadClients().catch((err) => { $("#clientComments").textContent = "Could not load: " + err.message; });
 }
+
+/* ---------- Home: the day's takings ---------- */
+const eur = (n) => "€" + Number(n || 0).toFixed(2);
+const PAY_LABEL = { counter: "Pay at counter", cash: "Cash", card: "Card", bizum: "Bizum", other: "Other" };
+const TYPE_LABEL = { pickup: "Takeaway", eat_here: "Eat here", delivery: "Delivery", other: "Other" };
+let dashDay = "";
+
+function barRows(obj, labels, total) {
+  const rows = Object.entries(obj || {});
+  if (!rows.length) return '<p class="muted">No orders yet.</p>';
+  return rows.sort((a, b) => b[1].amount - a[1].amount).map(([k, v]) => {
+    const pct = total > 0 ? Math.round((v.amount / total) * 100) : 0;
+    return `<div class="bar-row"><div class="bar-label"><span>${esc(labels[k] || k)}</span><strong>${eur(v.amount)} <small>· ${v.orders} order${v.orders === 1 ? "" : "s"}</small></strong></div><div class="bar-track"><i style="width:${pct}%"></i></div></div>`;
+  }).join("");
+}
+
+async function loadDashboard() {
+  const d = await api("/api/admin/dashboard" + (dashDay ? "?date=" + encodeURIComponent(dashDay) : ""));
+  const input = $("#dashDate");
+  if (document.activeElement !== input) input.value = d.date;
+  input.max = d.today;
+  const isToday = d.date === d.today;
+  $("#dashTitle").textContent = isToday ? "Today" : new Date(d.date + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+  const profit = d.profit === null
+    ? `<div class="kpi dim"><span>Estimated profit</span><strong>–</strong><small>Add “Cost to make” to dishes in Menu</small></div>`
+    : `<div class="kpi good"><span>Estimated profit</span><strong>${eur(d.profit)}</strong><small>${d.costCoverage}% of sold dishes have a cost</small></div>`;
+  $("#kpis").innerHTML = `
+    <div class="kpi main"><span>Money in</span><strong>${eur(d.revenue)}</strong><small>${d.orders} order${d.orders === 1 ? "" : "s"}${d.cancelled ? " · " + d.cancelled + " cancelled" : ""}</small></div>
+    <div class="kpi"><span>Received</span><strong>${eur(d.collected)}</strong><small>${eur(d.toCollect)} still to collect</small></div>
+    ${profit}
+    <div class="kpi"><span>Items sold</span><strong>${d.itemsSold}</strong><small>${eur(d.itemsSales)} from food</small></div>
+    <div class="kpi"><span>Average order</span><strong>${eur(d.average)}</strong></div>
+    <div class="kpi"><span>Delivery fees</span><strong>${eur(d.deliveryFees)}</strong>${d.tips ? `<small>+ ${eur(d.tips)} tips</small>` : ""}</div>`;
+  $("#dashPay").innerHTML = barRows(d.byPayment, PAY_LABEL, d.revenue);
+  $("#dashType").innerHTML = barRows(d.byType, TYPE_LABEL, d.revenue);
+  $("#dashTop").innerHTML = d.topItems.length
+    ? d.topItems.map((t, i) => `<div class="top-row"><span class="rank">${i + 1}</span><span class="nm">${esc(t.name)}</span><span class="qty">${t.qty}×</span><strong>${eur(t.amount)}</strong></div>`).join("")
+    : '<p class="muted">Nothing sold yet.</p>';
+  const max = Math.max(1, ...d.trend.map((t) => t.revenue));
+  $("#dashTrend").innerHTML = d.trend.map((t) => {
+    const h = Math.max(3, Math.round((t.revenue / max) * 100));
+    const label = new Date(t.date + "T12:00:00").toLocaleDateString(undefined, { weekday: "short" });
+    return `<button type="button" class="tbar${t.date === d.date ? " on" : ""}" data-day="${t.date}" title="${eur(t.revenue)} · ${t.orders} orders"><em>${t.revenue ? eur(t.revenue).replace(".00", "") : ""}</em><i style="height:${h}%"></i><span>${label}</span></button>`;
+  }).join("");
+}
+
+/* ---------- Client: comments and customers ---------- */
+function stars(n) { return n ? "★".repeat(n) + "☆".repeat(5 - n) : ""; }
+async function loadClients() {
+  const d = await api("/api/admin/clients");
+  const rated = d.comments.filter((c) => c.rating);
+  const avg = rated.length ? (rated.reduce((t, c) => t + c.rating, 0) / rated.length).toFixed(1) : null;
+  $("#clientComments").innerHTML = d.comments.length
+    ? `<p class="muted">${d.comments.length} comment${d.comments.length === 1 ? "" : "s"}${avg ? ` · average <strong class="avg">${avg} ★</strong>` : ""}</p>
+       <div class="comment-list">${d.comments.map((c) => `
+         <article class="comment" data-id="${esc(c.id)}">
+           <div class="c-head"><strong>${esc(c.name)}</strong><span class="c-stars" aria-label="${c.rating || 0} out of 5">${stars(c.rating)}</span></div>
+           <p class="c-msg">${esc(c.message)}</p>
+           <div class="c-foot"><small>${esc(c.email)} · ${new Date(c.createdAt).toLocaleString()}</small><button type="button" class="btn danger" data-del-comment="${esc(c.id)}">Delete</button></div>
+         </article>`).join("")}</div>`
+    : '<p class="muted">No comments yet. Customers can leave one at the bottom of the menu page.</p>';
+  $("#clientCustomers").innerHTML = d.customers.length
+    ? `<p class="muted">${d.customers.length} customer${d.customers.length === 1 ? "" : "s"}, biggest spenders first.</p><div class="menu-list">${d.customers.map((c) => `
+        <div class="menu-item-row"><div><strong>${esc(c.name)}</strong><small>${esc(c.email)}${c.phone ? " · " + esc(c.phone) : ""}</small></div><span class="item-price">${c.orders} order${c.orders === 1 ? "" : "s"}</span><strong>${eur(c.spent)}</strong></div>`).join("")}</div>`
+    : '<p class="muted">No customer accounts yet.</p>';
+}
+
 async function load() {
   clearTimeout(timer);
   try {
@@ -81,6 +151,7 @@ async function load() {
     orders = data.orders;
     showBoard();
     $("#boardErr").hidden = true;
+    if (!localStorage.getItem("ss_chef_token")) { try { await loadDashboard(); } catch (dashError) { $("#kpis").textContent = "Could not load the summary: " + dashError.message; } }
     try { await loadStock(); } catch (stockError) { $("#stockItems").textContent = "Could not load stock: " + stockError.message; }
     if (!localStorage.getItem("ss_chef_token")) { try { await loadStaffApplications(); await loadStaffDirectory(); } catch (staffError) { $("#staffApplicationsList").textContent = "Could not load staff: " + staffError.message; } }
 
@@ -145,6 +216,7 @@ function openMenuEditor(item = null) {
   form.elements.category.value = item ? item.category : (menuCategories[0] && menuCategories[0].id) || "";
   form.elements.price.value = item ? item.price : "";
   form.elements.unit.value = item ? item.unit || "" : "";
+  form.elements.cost.value = item && item.cost != null ? item.cost : "";
   form.elements.description.value = item ? item.description || "" : "";
   form.elements.image.value = item ? item.image || "" : "";
   form.elements.emoji.value = item ? item.emoji || "" : "🍽️";
@@ -324,6 +396,23 @@ async function boot() {
     if (button && !button.hidden) showSection(button.dataset.section);
   });
 
+  $("#dashDate").addEventListener("change", (e) => { dashDay = e.target.value; loadDashboard().catch(() => {}); });
+  $("#dashTrend").addEventListener("click", (e) => { const b = e.target.closest("[data-day]"); if (b) { dashDay = b.dataset.day; loadDashboard().catch(() => {}); } });
+  $("#clientPanel").addEventListener("click", async (e) => {
+    const v = e.target.closest("[data-client-view]");
+    if (v) {
+      const customers = v.dataset.clientView === "customers";
+      $("#clientComments").hidden = customers; $("#clientCustomers").hidden = !customers;
+      document.querySelectorAll("[data-client-view]").forEach((x) => x.classList.toggle("active", x === v));
+      return;
+    }
+    const del = e.target.closest("[data-del-comment]");
+    if (del && confirm("Delete this comment?")) {
+      try { await api("/api/admin/comments/" + encodeURIComponent(del.dataset.delComment), { method: "DELETE" }); await loadClients(); }
+      catch (err) { alert(err.message); }
+    }
+  });
+
   $("#filters").addEventListener("click", (e) => {
     const b = e.target.closest("[data-filter]");
     if (b) {
@@ -354,6 +443,7 @@ async function boot() {
       category: form.elements.category.value,
       price: Number(form.elements.price.value),
       unit: form.elements.unit.value.trim(),
+      cost: form.elements.cost.value,
       description: form.elements.description.value.trim(),
       image: form.elements.image.value.trim(),
       emoji: form.elements.emoji.value.trim() || "🍽️",

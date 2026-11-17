@@ -88,15 +88,22 @@
 <link rel="stylesheet" href="theme-pages.css"></head>
 <body>
   <header class="a-top">
+    <button type="button" class="menu-btn" id="menuBtn" aria-label="Open menu" aria-expanded="false" aria-controls="kitchenNav" hidden>
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
     <h1 id="screenTitle">🔥 Kitchen staff</h1>
-    <nav class="admin-nav" id="kitchenNav" aria-label="Administrator sections" hidden>
-      <a href="/admin-users.html">Account</a>
-      <button type="button" data-section="stockPanel">Stock list</button>
-      <button type="button" data-section="menuPanel">Menu</button>
-      <button type="button" data-section="staffApprovals">All staff</button>
-    </nav>
-    <button class="link-btn" id="logout" style="color:var(--yellow)" hidden>Log out</button>
+    <button class="link-btn" id="logout" hidden>Log out</button>
   </header>
+  <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
+  <nav class="admin-drawer" id="kitchenNav" aria-label="Administrator sections" hidden>
+    <p class="drawer-title">Spice Smash Admin</p>
+    <button type="button" data-section="ordersPanel"><span aria-hidden="true">🏠</span> Home</button>
+    <a href="/admin-users.html"><span aria-hidden="true">👤</span> Account</a>
+    <button type="button" data-section="stockPanel"><span aria-hidden="true">📦</span> Stock list</button>
+    <button type="button" data-section="menuPanel"><span aria-hidden="true">🍽️</span> Menu</button>
+    <button type="button" data-section="staffApprovals"><span aria-hidden="true">👥</span> All staff</button>
+    <button type="button" data-section="clientPanel"><span aria-hidden="true">💬</span> Client</button>
+  </nav>
 
   <div id="loginBox" class="login" hidden>
     <h2>Staff login</h2>
@@ -110,6 +117,20 @@
 
   <main id="board" class="a-wrap" hidden>
     <section id="ordersPanel" class="kitchen-section">
+      <div id="dashboard" hidden>
+        <div class="dash-head">
+          <h2 id="dashTitle">Today</h2>
+          <label class="dash-date">Day <input type="date" id="dashDate"></label>
+        </div>
+        <div class="kpis" id="kpis"></div>
+        <div class="dash-grid">
+          <section class="stock-panel"><h3>How customers paid</h3><div id="dashPay"></div></section>
+          <section class="stock-panel"><h3>Order types</h3><div id="dashType"></div></section>
+          <section class="stock-panel"><h3>Best sellers</h3><div id="dashTop"></div></section>
+          <section class="stock-panel"><h3>Last 7 days</h3><div id="dashTrend" class="trend"></div></section>
+        </div>
+        <h2 class="live-h">Orders</h2>
+      </div>
       <div class="filters" id="filters"></div>
       <div id="boardErr" class="a-error" hidden></div>
       <div class="orders" id="orders"></div>
@@ -134,6 +155,7 @@
           <label>Category<select name="category" id="menuCategory" required></select></label>
           <label>Price<input name="price" type="number" min="0.01" step="0.01" required placeholder="5.00"></label>
           <label>Unit / portion<input name="unit" maxlength="60" placeholder="e.g. per piece, per box, 500 g"></label>
+          <label>Cost to make <span class="muted">(private, used for profit)</span><input name="cost" type="number" min="0" step="0.01" placeholder="1.50"></label>
           <label class="wide">Description<textarea name="description" maxlength="300" required placeholder="Describe the dish"></textarea></label>
           <label>Photo path or HTTPS image URL<input name="image" maxlength="500" placeholder="/img/dish.jpg or https://…"></label>
           <label>Emoji fallback<input name="emoji" maxlength="12" placeholder="🍽️"></label>
@@ -151,8 +173,15 @@
       <div id="staffApplications"><p>Approve or reject chef and driver registrations. Staff cannot access their work pages until approved.</p><div id="staffApplicationsList" class="menu-list">Loading applications…</div></div>
       <div id="staffDirectory" hidden><p>Staff directory with role, contact details, staff ID and account approval status. Passwords are never displayed.</p><div id="staffDirectoryList" class="staff-detail">Loading staff…</div></div>
     </section>
+    <section class="stock-panel kitchen-section" id="clientPanel" hidden>
+      <h2>Client</h2>
+      <div class="staff-subnav"><button type="button" class="active" data-client-view="comments">Comments</button><button type="button" data-client-view="customers">Customers</button></div>
+      <div id="clientComments"><p>Loading comments…</p></div>
+      <div id="clientCustomers" hidden></div>
+    </section>
   </main>
 
+  <script src="admin-drawer.js"></script>
   <script src="admin.js"></script>
 </body>
 </html>

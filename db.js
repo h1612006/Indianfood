@@ -30,6 +30,8 @@ function createFileStore(dir) {
   let stock = {};
   let menuItems = {};
   let users = {};
+  let comments = [];
+  const commentsFile = path.join(dir, "comments.json");
   const usersFile = path.join(dir, "users.json");
   const menuItemsFile = path.join(dir, "menu-items.json");
   const stockFile = path.join(dir, "stock.json");
@@ -58,6 +60,7 @@ function createFileStore(dir) {
       try { stock = JSON.parse(fs.readFileSync(stockFile, "utf8")); } catch (_) { stock = {}; }
       try { menuItems = JSON.parse(fs.readFileSync(menuItemsFile, "utf8")); } catch (_) { menuItems = {}; }
       try { users = JSON.parse(fs.readFileSync(usersFile, "utf8")); } catch (_) { users = {}; }
+      try { comments = JSON.parse(fs.readFileSync(commentsFile, "utf8")); } catch (_) { comments = []; }
     },
 
     async ping() {
@@ -98,6 +101,22 @@ function createFileStore(dir) {
       users[key] = { ...current, ...patch };
       fs.writeFileSync(usersFile + ".tmp", JSON.stringify(users, null, 2)); fs.renameSync(usersFile + ".tmp", usersFile);
       return users[key];
+    },
+
+    async saveComment(comment) {
+      comments.push(comment);
+      try { fs.writeFileSync(commentsFile + ".tmp", JSON.stringify(comments, null, 2)); fs.renameSync(commentsFile + ".tmp", commentsFile); }
+      catch (e) { comments.pop(); throw e; }
+      return comment;
+    },
+    async listComments() { return [...comments].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))); },
+    async deleteComment(id) {
+      const i = comments.findIndex((c) => c.id === id);
+      if (i < 0) return false;
+      const [gone] = comments.splice(i, 1);
+      try { fs.writeFileSync(commentsFile + ".tmp", JSON.stringify(comments, null, 2)); fs.renameSync(commentsFile + ".tmp", commentsFile); }
+      catch (e) { comments.splice(i, 0, gone); throw e; }
+      return true;
     },
 
     async listMenuItems() { return Object.values(menuItems); },
@@ -209,6 +228,11 @@ function createPgStore() {
               data JSONB NOT NULL,
               created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
+            CREATE TABLE IF NOT EXISTS comments (
+              id TEXT PRIMARY KEY,
+              data JSONB NOT NULL,
+              created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
             CREATE INDEX IF NOT EXISTS orders_created_idx ON orders (created_at DESC);
           `);
           return;
@@ -265,6 +289,19 @@ function createPgStore() {
       const updated = { ...current, ...patch };
       const { rows } = await pool.query("UPDATE app_users SET data = $2 WHERE email = $1 RETURNING data", [email.toLowerCase(), JSON.stringify(updated)]);
       return rows[0] ? rows[0].data : null;
+    },
+
+    async saveComment(comment) {
+      await pool.query("INSERT INTO comments (id, data, created_at) VALUES ($1, $2, $3)", [comment.id, JSON.stringify(comment), comment.createdAt]);
+      return comment;
+    },
+    async listComments() {
+      const { rows } = await pool.query("SELECT data FROM comments ORDER BY created_at DESC");
+      return rows.map((r) => r.data);
+    },
+    async deleteComment(id) {
+      const result = await pool.query("DELETE FROM comments WHERE id = $1", [id]);
+      return result.rowCount > 0;
     },
 
     async listMenuItems() {
