@@ -250,6 +250,10 @@ label.radio input { accent-color: var(--red); }
 .cancelled-banner { background: #fdecee; color: #b00020; padding: 12px; border-radius: 12px; font-weight: 700; margin: 16px 0; }
 
 /* Toast + footer */
+.filter-bar { max-width: 1000px; margin: 0 auto; padding: 6px 16px 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+.filter-pill { font: inherit; font-size: 13px; font-weight: 700; padding: 6px 14px; border-radius: 999px; border: 2px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; }
+.filter-pill.active { background: var(--orange); color: #fff; border-color: var(--orange); }
+
 .toast {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
   background: var(--ink); color: #fff; padding: 12px 18px; border-radius: 999px;
