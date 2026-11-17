@@ -71,7 +71,12 @@ body:has(.account-wrap) {
 body:has(.account-wrap) .top { background: transparent; border-bottom: 0; box-shadow: none; padding-top: 18px; }
 body:has(.account-wrap) .top::after { top: 0; margin-top: 0; height: 14px; }
 body:has(.account-wrap) .top a { font-weight: 700; position: relative; top: 14px; }
-.account-wrap { margin-top: 44px; }
+/* keep the sign-in / account card a comfortable, centred size */
+.account-wrap { width: 100%; max-width: 460px; margin: 44px auto 0; padding: 0 16px; }
+/* make every field fill the card (generic form rules miss password/email types) */
+.account-card input, .account-card select, .account-card textarea { box-sizing: border-box; display: block; width: 100%; min-width: 0; }
+/* explicit: the password field keeps the same width in both hidden and visible states */
+html body .account-card .pw-wrap input { width: 100%; min-width: 0; }
 .account-card {
   background: #fff; border: 0; border-top: 8px solid var(--marigold); border-radius: 24px; padding: 28px 26px;
   box-shadow: 0 24px 50px -18px rgba(0,0,0,.6); animation: rise .3s cubic-bezier(.2,.9,.3,1.1);
