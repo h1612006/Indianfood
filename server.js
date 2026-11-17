@@ -258,7 +258,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "*/*", limit: "1mb" }), wrap
 }));
 
 app.use(express.json({ limit: "50kb" }));
-app.get("/", (_req, res) => res.redirect(301, "/profile.html"));
+app.get("/", (_req, res) => { res.set("Cache-Control", "no-store"); res.sendFile(path.join(__dirname, "public", "profile.html")); });
 app.use(express.static(path.join(__dirname, "public")));
 app.use((req,res,next)=>{const token=String(req.get("authorization")||"").replace(/^Bearer /,"");req.user=sessions.get(token)||null;next();});
 
@@ -277,7 +277,7 @@ app.get(
   })
 );
 
-app.get("/api/menu", wrap(async (_req, res) => res.json({ ...menu, stock: await store.listStock(), onlineCard: ONLINE_CARD })));
+app.get("/api/menu", wrap(async (_req, res) => res.json({ ...menu, items: menu.items.map(({ cost, ...publicItem }) => publicItem), stock: await store.listStock(), onlineCard: ONLINE_CARD })));
 
 app.post(
   "/api/orders",
@@ -453,6 +453,140 @@ app.delete("/api/admin/users/:email", requireAdmin, wrap(async (req,res) => {
   res.json({ok:true});
 }));
 
+
+/* ---------- customer comments ---------- */
+const commentLog = new Map(); // email -> timestamps, to stop spam
+app.post("/api/comments", wrap(async (req, res) => {
+  if (!req.user || req.user.role !== "customer" || !req.user.approved) throw new UserError("Sign in with a customer account to leave a comment.");
+  const message = clean(req.body && req.body.message, 600);
+  if (message.length < 3) throw new UserError("Please write your comment (at least 3 characters).");
+  const ratingRaw = req.body && req.body.rating;
+  const rating = ratingRaw === undefined || ratingRaw === null || ratingRaw === "" ? null : Number(ratingRaw);
+  if (rating !== null && (!Number.isInteger(rating) || rating < 1 || rating > 5)) throw new UserError("Rating must be from 1 to 5 stars.");
+  const now = Date.now();
+  const recent = (commentLog.get(req.user.email) || []).filter((t) => now - t < 3600_000);
+  if (recent.length >= 5) throw new UserError("You have sent several comments already. Please try again in an hour.");
+  commentLog.set(req.user.email, [...recent, now]);
+  const comment = {
+    id: "C" + now.toString(36).toUpperCase() + crypto.randomBytes(2).toString("hex").toUpperCase(),
+    name: req.user.name || "Customer",
+    email: req.user.email,
+    rating,
+    message,
+    createdAt: new Date(now).toISOString(),
+  };
+  await store.saveComment(comment);
+  res.status(201).json({ ok: true });
+}));
+app.get("/api/admin/comments", requireAdmin, wrap(async (_req, res) => {
+  res.json({ comments: await store.listComments() });
+}));
+app.delete("/api/admin/comments/:id", requireAdmin, wrap(async (req, res) => {
+  if (!(await store.deleteComment(String(req.params.id)))) return res.status(404).json({ error: "Comment not found." });
+  res.json({ ok: true });
+}));
+
+// "Forgot password": the owner sets a new password for the person, who then signs in with it.
+app.patch("/api/admin/users/:email/password", requireAdmin, wrap(async (req, res) => {
+  const email = decodeURIComponent(req.params.email).toLowerCase();
+  const password = String(req.body && req.body.password || "");
+  if (password.length < 10) throw new UserError("The new password needs at least 10 characters.");
+  const salt = crypto.randomBytes(16).toString("hex");
+  const updated = await store.updateUser(email, { passwordSalt: salt, passwordHash: crypto.scryptSync(password, salt, 64).toString("hex") });
+  if (!updated) return res.status(404).json({ error: "Account not found." });
+  for (const [key, value] of sessions) if (value.email === email) sessions.delete(key);
+  res.json({ ok: true });
+}));
+
+/* ---------- admin dashboard: takings for a day ---------- */
+const SHOP_TZ = process.env.SHOP_TZ || "Europe/Madrid";
+const dayKey = (iso) => new Date(iso).toLocaleDateString("en-CA", { timeZone: SHOP_TZ }); // YYYY-MM-DD
+
+function summariseDay(orders, day) {
+  const mine = orders.filter((o) => dayKey(o.createdAt) === day);
+  const live = mine.filter((o) => o.status !== "cancelled");
+  const sum = (arr, f) => round2(arr.reduce((t, o) => t + (Number(f(o)) || 0), 0));
+  const revenue = sum(live, (o) => o.total);
+  const collected = sum(live.filter((o) => o.paymentReceived), (o) => o.total);
+  const group = (keyOf) => {
+    const out = {};
+    for (const o of live) {
+      const k = keyOf(o) || "other";
+      out[k] = out[k] || { orders: 0, amount: 0 };
+      out[k].orders += 1;
+      out[k].amount = round2(out[k].amount + o.total);
+    }
+    return out;
+  };
+  const items = new Map();
+  let itemsSold = 0, costTotal = 0, costedSales = 0, costedLines = 0, lineCount = 0;
+  for (const o of live) {
+    for (const l of o.items || []) {
+      const qty = Number(l.qty) || 0;
+      itemsSold += qty;
+      lineCount += 1;
+      const row = items.get(l.itemId) || { name: l.name, qty: 0, amount: 0 };
+      row.qty += qty; row.amount = round2(row.amount + (Number(l.lineTotal) || 0));
+      items.set(l.itemId, row);
+      const cost = itemsById.get(l.itemId) && itemsById.get(l.itemId).cost;
+      if (typeof cost === "number") { costTotal += cost * qty; costedSales += Number(l.lineTotal) || 0; costedLines += 1; }
+    }
+  }
+  return {
+    date: day,
+    orders: live.length,
+    cancelled: mine.length - live.length,
+    revenue,
+    itemsSales: sum(live, (o) => o.subtotal),
+    deliveryFees: sum(live, (o) => o.deliveryFee),
+    tips: sum(live, (o) => o.tip),
+    average: live.length ? round2(revenue / live.length) : 0,
+    collected,
+    toCollect: round2(revenue - collected),
+    itemsSold,
+    byPayment: group((o) => o.payment),
+    byType: group((o) => o.type),
+    topItems: [...items.values()].sort((a, b) => b.qty - a.qty).slice(0, 5),
+    // Profit is only an estimate: it covers dishes that have a cost price set in the Menu editor.
+    profit: costedLines ? round2(costedSales - costTotal) : null,
+    costCoverage: lineCount ? Math.round((costedLines / lineCount) * 100) : 0,
+  };
+}
+
+app.get("/api/admin/dashboard", requireAdmin, wrap(async (req, res) => {
+  const today = dayKey(new Date().toISOString());
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || "")) ? String(req.query.date) : today;
+  const orders = (await store.listOrders()).filter((o) => !o.awaitingPayment);
+  const summary = summariseDay(orders, day);
+  const trend = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(`${day}T12:00:00Z`); d.setUTCDate(d.getUTCDate() - i);
+    const k = d.toISOString().slice(0, 10);
+    const s = i === 0 ? summary : summariseDay(orders, k);
+    trend.push({ date: k, orders: s.orders, revenue: s.revenue });
+  }
+  res.json({ ...summary, today, trend, currency: menu.currency || "€", timezone: SHOP_TZ });
+}));
+
+/* ---------- admin: clients (customers and their comments) ---------- */
+app.get("/api/admin/clients", requireAdmin, wrap(async (_req, res) => {
+  const [users, orders, comments] = await Promise.all([store.listUsers(), store.listOrders(), store.listComments()]);
+  const byEmail = new Map();
+  for (const o of orders) {
+    if (o.awaitingPayment || o.status === "cancelled" || !o.customerEmail) continue;
+    const k = String(o.customerEmail).toLowerCase();
+    const row = byEmail.get(k) || { orders: 0, spent: 0, lastOrderAt: "" };
+    row.orders += 1; row.spent = round2(row.spent + o.total);
+    if (o.createdAt > row.lastOrderAt) row.lastOrderAt = o.createdAt;
+    byEmail.set(k, row);
+  }
+  const customers = users.filter((u) => u.role === "customer").map((u) => ({
+    name: u.name, email: u.email, phone: u.phone || "", createdAt: u.createdAt || "",
+    ...(byEmail.get(String(u.email).toLowerCase()) || { orders: 0, spent: 0, lastOrderAt: "" }),
+  })).sort((a, b) => b.spent - a.spent);
+  res.json({ customers, comments });
+}));
+
 app.get("/api/admin/staff-applications", requireSuperAdmin, wrap(async (_req,res) => {
   const applications=(await store.listUsers()).filter(u=>["chef","driver"].includes(u.role)&&!u.approved).map(safeUser);
   res.json({applications});
@@ -496,6 +630,11 @@ function menuItemInput(body, existing = null) {
   const unit = clean(body.unit, 60);
   const emoji = clean(body.emoji || "🍽️", 12);
   const image = clean(body.image, 500);
+  const costText = body.cost === undefined || body.cost === null ? "" : String(body.cost).trim();
+  const cost = costText === "" ? undefined : Number(costText);
+  if (cost !== undefined && (!Number.isFinite(cost) || cost < 0 || Math.round(cost * 100) / 100 !== cost)) {
+    throw new UserError("Cost must be zero or more, with no more than 2 decimal places.");
+  }
   if (!name) throw new UserError("Enter an item name.");
   if (!menu.categories.some((c) => c.id === category)) throw new UserError("Choose a valid category.");
   if (!Number.isFinite(price) || price <= 0 || Math.round(price * 100) / 100 !== price) {
@@ -511,6 +650,7 @@ function menuItemInput(body, existing = null) {
     ...(existing || {}),
     id, name, description, category, price, unit: unit || undefined,
     emoji, image: image || undefined,
+    cost, // private: what the dish costs the shop to make; never sent to customers
     spiceLevels: existing && existing.spiceLevels ? existing.spiceLevels : ["Mid", "High", "Super High"],
   };
 }

@@ -140,6 +140,15 @@ Open the address on a phone. Android (Chrome): menu → *Install app*. iPhone (S
 
 Free-plan limits (see Render's [free tier page](https://render.com/docs/free)): the app sleeps after 15 minutes without visitors and takes about a minute to wake; the free database expires after 30 days and has no backups. Good for a demo or trial. For a real restaurant, use the Docker route above or a paid plan.
 
+## Admin screen
+
+Sign in as `admin` (password = `ADMIN_PASSWORD`). Tap the **three-line button** at the top left to open the menu: **Home, Account, Stock list, Menu, All staff, Client**. The only button on the right is **Log out**.
+
+- **Home** shows the day's takings: money in, received vs still to collect, items sold, average order, delivery fees, how customers paid (cash / card / Bizum), order types, best sellers and the last 7 days. Pick another day with the date box or by tapping a bar. Kitchen orders are listed underneath.
+- **Estimated profit** appears once dishes have a **Cost to make** (Menu → edit a dish). It only counts dishes that have a cost, and customers never see it. Day boundaries use `SHOP_TZ` (default `Europe/Madrid`).
+- **Client** shows every comment customers send from the bottom of the menu page (stars and text, with a delete button) and a list of customers with their order counts and spending.
+- Opening the plain site address (`/`) shows the login page. Customers who forget their password ask the shop; the owner sets a new one from **Account**.
+
 ## Take card payments into your bank account
 
 Cards are handled by [Stripe](https://stripe.com), which holds the money safely and pays it out to **your bank account** (usually within a few days). Card numbers never touch this app or your server. Without the steps below, "Card" is only a choice the customer pays at pickup or delivery, and nothing breaks.

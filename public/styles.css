@@ -458,3 +458,18 @@ label.radio.pay:has(input:checked) { border-color: var(--red); background: #fff0
   .brand-mark { width: 34px; height: 34px; font-size: 18px; }
   .cats { top: 58px; }
 }
+
+/* ---------- Customer comment box (menu page) ---------- */
+.comment-open { margin-top: 14px; background: var(--marigold); color: var(--maroon); font-weight: 800; box-shadow: 0 3px 0 #b87a00; }
+.comment-open:hover { background: #ffb81f; }
+.comment-modal h2 { font-size: 28px; margin-bottom: 10px; color: var(--maroon); }
+.comment-modal .cm-stars { border: 0; padding: 0; margin: 0 0 10px; }
+.comment-modal .cm-stars legend { font-weight: 800; color: var(--maroon); padding: 0; margin-bottom: 4px; }
+.comment-modal .cm-row { display: flex; flex-direction: row-reverse; justify-content: flex-end; gap: 4px; }
+.comment-modal label.cm-star { display: block; position: relative; margin: 0; width: auto; font-weight: 400; font-size: 40px; line-height: 1; color: #d9ccb8; cursor: pointer; transition: color .1s, transform .1s; }
+.comment-modal label.cm-star input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; cursor: pointer; }
+.comment-modal .cm-star .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.comment-modal .cm-star:hover, .comment-modal .cm-star:hover ~ .cm-star, .comment-modal .cm-star:has(input:checked), .comment-modal .cm-star:has(input:checked) ~ .cm-star { color: var(--marigold); }
+.comment-modal .cm-star:hover { transform: scale(1.12); }
+.comment-modal .cm-star:has(input:focus-visible) { outline: 3px solid var(--maroon); border-radius: 6px; }
+.cm-done { text-align: center; font-weight: 800; color: var(--chutney); padding: 18px 0 8px; font-size: 18px; }
