@@ -132,6 +132,8 @@ function buildOrder(body) {
   const lines = body.items.map(priceLine);
   const subtotal = round2(lines.reduce((s, l) => s + l.lineTotal, 0));
 
+  const tip = round2(Math.max(0, Number(body.tip) || 0));
+
   let deliveryFee = 0;
   if (type === "delivery") {
     if (subtotal < menu.minDeliveryOrder) {
@@ -150,7 +152,8 @@ function buildOrder(body) {
     items: lines,
     subtotal,
     deliveryFee,
-    total: round2(subtotal + deliveryFee),
+    tip,
+    total: round2(subtotal + deliveryFee + tip),
     status: "received",
     serviceType: type === "eat_here" ? "eat_here" : (type === "pickup" ? "takeaway" : "delivery"),
     paymentReceived: false,
@@ -169,6 +172,7 @@ function publicOrder(o, user = null) {
     items: o.items,
     subtotal: o.subtotal,
     deliveryFee: o.deliveryFee,
+    tip: o.tip || 0,
     total: o.total,
     status: o.status,
     serviceType: o.serviceType || (o.type === "pickup" ? "takeaway" : o.type),
@@ -331,6 +335,16 @@ app.get(
     const order = await store.getOrder(String(req.params.id).toUpperCase());
     if (!order) return res.status(404).json({ error: "Order not found." });
     res.json({ order: publicOrder(order, req.user) });
+  })
+);
+
+app.get(
+  "/api/customer/orders",
+  wrap(async (req, res) => {
+    if (!req.user || req.user.role !== "customer") throw new UserError("Please sign in as a customer.");
+    const all = await store.listOrders();
+    const myOrders = all.filter((o) => o.customerEmail && o.customerEmail.toLowerCase() === req.user.email.toLowerCase());
+    res.json({ orders: myOrders.map((o) => publicOrder(o, req.user)) });
   })
 );
 
