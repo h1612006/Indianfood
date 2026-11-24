@@ -217,6 +217,8 @@ function openMenuEditor(item = null) {
   form.elements.price.value = item ? item.price : "";
   form.elements.unit.value = item ? item.unit || "" : "";
   form.elements.cost.value = item && item.cost != null ? item.cost : "";
+  form.elements.veg.checked = !!(item && (item.tags || []).includes("veg"));
+  form.elements.spicy.checked = !!(item && (item.tags || []).includes("spicy"));
   form.elements.description.value = item ? item.description || "" : "";
   form.elements.image.value = item ? item.image || "" : "";
   form.elements.emoji.value = item ? item.emoji || "" : "🍽️";
@@ -444,6 +446,8 @@ async function boot() {
       price: Number(form.elements.price.value),
       unit: form.elements.unit.value.trim(),
       cost: form.elements.cost.value,
+      veg: form.elements.veg.checked,
+      spicy: form.elements.spicy.checked,
       description: form.elements.description.value.trim(),
       image: form.elements.image.value.trim(),
       emoji: form.elements.emoji.value.trim() || "🍽️",

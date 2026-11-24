@@ -53,12 +53,14 @@
 
   <nav class="cats" id="cats" aria-label="Menu categories"></nav>
   <div class="filter-bar" id="filterBar" role="group" aria-label="Menu filters">
-    <input type="text" id="menuSearch" placeholder="🔍 Search menu items…" style="flex:1;min-width:180px;padding:8px 14px;border:2px solid var(--line);border-radius:999px;font:inherit;background:#fff;">
-    <button class="filter-pill active" data-filter="all">All items</button>
-    <button class="filter-pill" data-filter="veg">🥦 Veg</button>
-    <button class="filter-pill" data-filter="spicy">🌶️ Spicy</button>
-    <button class="filter-pill" data-filter="favorites">⭐ Favorites</button>
+    <input type="search" id="menuSearch" class="menu-search" placeholder="🔍 Search menu items…" aria-label="Search the menu" autocomplete="off" enterkeyhint="search" maxlength="60">
+    <button type="button" class="filter-pill active" data-filter="all" aria-pressed="true">All items</button>
+    <button type="button" class="filter-pill" data-filter="veg" aria-pressed="false">🥦 Veg</button>
+    <button type="button" class="filter-pill" data-filter="spicy" aria-pressed="false">🌶️ Spicy</button>
+    <button type="button" class="filter-pill" data-filter="favorites" aria-pressed="false">⭐ Favorites</button>
   </div>
+  <p class="menu-count" id="menuCount" aria-live="polite"></p>
+  <div class="menu-empty" id="menuEmpty" hidden aria-live="polite"></div>
 
   <main class="menu" id="menuRoot">
     <p class="muted">Loading menu…</p>

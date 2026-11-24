@@ -498,6 +498,28 @@ app.patch("/api/admin/users/:email/password", requireAdmin, wrap(async (req, res
   res.json({ ok: true });
 }));
 
+/* ---------- customer favourites (saved on the account, so they follow the customer to any device) ---------- */
+function cleanFavorites(list) {
+  const out = [];
+  for (const id of Array.isArray(list) ? list : []) {
+    if (typeof id === "string" && itemsById.has(id) && !out.includes(id)) out.push(id);
+    if (out.length >= 200) break;
+  }
+  return out;
+}
+app.get("/api/customer/favorites", wrap(async (req, res) => {
+  if (!req.user || req.user.role !== "customer") throw new UserError("Please sign in as a customer.");
+  const user = await store.getUser(req.user.email);
+  res.json({ favorites: cleanFavorites(user && user.favorites) });
+}));
+app.put("/api/customer/favorites", wrap(async (req, res) => {
+  if (!req.user || req.user.role !== "customer") throw new UserError("Please sign in as a customer.");
+  if (!req.body || !Array.isArray(req.body.favorites)) throw new UserError("Send a list of favourite items.");
+  const favorites = cleanFavorites(req.body.favorites);
+  await store.updateUser(req.user.email, { favorites });
+  res.json({ favorites });
+}));
+
 /* ---------- admin dashboard: takings for a day ---------- */
 const SHOP_TZ = process.env.SHOP_TZ || "Europe/Madrid";
 const dayKey = (iso) => new Date(iso).toLocaleDateString("en-CA", { timeZone: SHOP_TZ }); // YYYY-MM-DD
@@ -651,6 +673,7 @@ function menuItemInput(body, existing = null) {
     id, name, description, category, price, unit: unit || undefined,
     emoji, image: image || undefined,
     cost, // private: what the dish costs the shop to make; never sent to customers
+    tags: "veg" in body || "spicy" in body ? [...(body.veg ? ["veg"] : []), ...(body.spicy ? ["spicy"] : [])] : (existing && existing.tags) || undefined,
     spiceLevels: existing && existing.spiceLevels ? existing.spiceLevels : ["Mid", "High", "Super High"],
   };
 }

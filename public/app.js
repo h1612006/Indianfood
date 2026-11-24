@@ -134,6 +134,173 @@ function tagsHtml(item) {
     .join("");
 }
 
+/* ---------- search, filters and favourites ---------- */
+
+let filterMode = "all";     // all | veg | spicy | favorites
+let searchText = "";
+let favs = new Set();       // item ids the customer has hearted
+let favSaveTimer = 0;
+let favNoticeShown = false;
+const signedIn = () => !!localStorage.getItem("ss_auth_token");
+const authHeader = () => ({ Authorization: "Bearer " + (localStorage.getItem("ss_auth_token") || "") });
+
+// "SUji", "suji" and "Sújí" all match "Suji Dhokla".
+const norm = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+function itemHaystack(i) {
+  const cat = menu.categories.find((c) => c.id === i.category);
+  const tags = (i.tags || []).map((t) => (t === "veg" ? "veg vegetarian" : t === "spicy" ? "spicy hot" : t)).join(" ");
+  return norm([i.name, i.description, cat ? cat.name : "", tags, i.unit].join(" "));
+}
+
+function itemShown(i) {
+  if (filterMode === "veg" && !(i.tags || []).includes("veg")) return false;
+  if (filterMode === "spicy" && !(i.tags || []).includes("spicy")) return false;
+  if (filterMode === "favorites" && !favs.has(i.id)) return false;
+  const words = norm(searchText).split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const hay = itemHaystack(i);
+  return words.every((w) => hay.includes(w));
+}
+
+function applyFilters() {
+  if (!menu || !menu.items) return;
+  let shown = 0;
+  $$(".card-wrap").forEach((w) => {
+    const item = itemsById.get(w.dataset.id);
+    const ok = !!item && itemShown(item);
+    w.hidden = !ok;
+    if (ok) shown++;
+  });
+  $$(".menu-section").forEach((sec) => {
+    const any = !!sec.querySelector(".card-wrap:not([hidden])");
+    sec.hidden = !any;
+    const tab = document.querySelector(`.cat-tab[data-cat="${sec.id.replace("cat-", "")}"]`);
+    if (tab) tab.hidden = !any;
+  });
+
+  const filtering = filterMode !== "all" || norm(searchText).trim() !== "";
+  const count = $("#menuCount");
+  if (count) count.textContent = filtering && shown ? `${shown} dish${shown === 1 ? "" : "es"} found` : "";
+
+  const empty = $("#menuEmpty");
+  if (empty) {
+    empty.hidden = shown > 0;
+    if (!shown) {
+      const q = searchText.trim();
+      let msg;
+      if (filterMode === "favorites" && !q) {
+        msg = `<strong>No favourites yet.</strong><span>Tap the ♡ on any dish to save it here.</span>`;
+      } else if (q) {
+        msg = `<strong>No dishes match “${esc(q)}”.</strong><span>Check the spelling or try a shorter word like “samosa” or “kachori”.</span>`;
+      } else {
+        msg = `<strong>No dishes are marked ${filterMode === "veg" ? "vegetarian" : "spicy"} yet.</strong><span>Try another filter.</span>`;
+      }
+      empty.innerHTML = msg + `<button type="button" class="btn primary" id="clearFilters">Show all dishes</button>`;
+    }
+  }
+}
+
+function paintFavs() {
+  $$(".fav-btn").forEach((b) => {
+    const on = favs.has(b.dataset.fav);
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", String(on));
+    const name = (itemsById.get(b.dataset.fav) || {}).name || "this dish";
+    b.setAttribute("aria-label", on ? `Remove ${name} from favourites` : `Add ${name} to favourites`);
+    b.title = on ? "Remove from favourites" : "Add to favourites";
+  });
+}
+
+function saveFavs() {
+  if (!signedIn()) {
+    try { localStorage.setItem("ss_favs_guest", JSON.stringify([...favs])); } catch (_) { /* private mode */ }
+    return;
+  }
+  clearTimeout(favSaveTimer);
+  favSaveTimer = setTimeout(() => {
+    fetch("/api/customer/favorites", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...authHeader() },
+      body: JSON.stringify({ favorites: [...favs] }),
+    }).catch(() => { /* the hearts still work on this device */ });
+  }, 350);
+}
+
+function toggleFav(id) {
+  if (!itemsById.has(id)) return;
+  const adding = !favs.has(id);
+  if (adding) favs.add(id); else favs.delete(id);
+  paintFavs();
+  saveFavs();
+  const name = itemsById.get(id).name;
+  toast(adding ? `♥ ${name} added to favourites` : `${name} removed from favourites`);
+  if (!signedIn() && adding && !favNoticeShown) {
+    favNoticeShown = true;
+    setTimeout(() => toast("Sign in to keep your favourites on every device."), 1800);
+  }
+  if (filterMode === "favorites") applyFilters();
+}
+
+async function loadFavs() {
+  let guest = [];
+  try { guest = JSON.parse(localStorage.getItem("ss_favs_guest") || "[]"); } catch (_) { /* ignore */ }
+  favs = new Set(guest.filter((id) => itemsById.has(id)));
+  if (signedIn()) {
+    try {
+      const res = await fetch("/api/customer/favorites", { headers: authHeader(), cache: "no-store" });
+      if (res.ok) {
+        const server = (await res.json()).favorites || [];
+        const merged = new Set([...server, ...favs]);          // hearts picked before signing in join the account
+        const changed = merged.size !== server.length;
+        favs = merged;
+        if (guest.length) localStorage.removeItem("ss_favs_guest");
+        if (changed) saveFavs();
+      } else if (res.status === 400 || res.status === 401) {
+        favs = new Set(guest.filter((id) => itemsById.has(id)));   // staff accounts have no favourites
+      }
+    } catch (_) { /* offline: keep what we have */ }
+  }
+  paintFavs();
+  applyFilters();
+}
+
+function wireFilters() {
+  const input = $("#menuSearch");
+  let scrolled = false;
+  input.addEventListener("input", () => {
+    searchText = input.value;
+    applyFilters();
+    // Bring the results into view the first time someone types from the top of the page.
+    const bar = $("#filterBar");
+    if (!scrolled && searchText.trim() && bar.getBoundingClientRect().top > 160) {
+      scrolled = true;
+      window.scrollTo({ top: window.scrollY + bar.getBoundingClientRect().top - 130, behavior: "smooth" });
+    }
+  });
+  input.addEventListener("keydown", (e) => { if (e.key === "Escape") { input.value = ""; searchText = ""; applyFilters(); } });
+  $("#filterBar").addEventListener("click", (e) => {
+    const pill = e.target.closest("[data-filter]");
+    if (!pill) return;
+    filterMode = pill.dataset.filter;
+    $$(".filter-pill").forEach((p) => {
+      p.classList.toggle("active", p === pill);
+      p.setAttribute("aria-pressed", String(p === pill));
+    });
+    applyFilters();
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("#clearFilters")) return;
+    filterMode = "all"; searchText = ""; input.value = "";
+    $$(".filter-pill").forEach((p) => { p.classList.toggle("active", p.dataset.filter === "all"); p.setAttribute("aria-pressed", String(p.dataset.filter === "all")); });
+    applyFilters();
+  });
+  $("#menuRoot").addEventListener("click", (e) => {
+    const b = e.target.closest(".fav-btn");
+    if (b) toggleFav(b.dataset.fav);
+  });
+}
+
 function renderMenu() {
   $("#brandName").textContent = menu.brand;
   $("#brandFooter").textContent = menu.brand;
@@ -154,6 +321,7 @@ function renderMenu() {
           ${items
             .map(
               (i) => `
+            <div class="card-wrap" data-id="${esc(i.id)}">
             <button class="card" data-id="${esc(i.id)}" data-cat="${esc(i.category)}" ${!isAvailable(i) ? "disabled" : ""}>
               <div class="card-art${i.image ? " has-img" : ""}">${artHtml(i)}</div>
               <div class="card-body">
@@ -164,7 +332,11 @@ function renderMenu() {
                   ${!isAvailable(i) ? `<span class="stock-badge">OUT OF STOCK</span>` : `<span class="add-chip" aria-hidden="true">+</span>`}
                 </div>
               </div>
-            </button>`
+            </button>
+            <button type="button" class="fav-btn" data-fav="${esc(i.id)}" aria-pressed="false" aria-label="Add ${esc(i.name)} to favourites" title="Add to favourites">
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-9.3-9.2C1.4 7.8 3.6 4.5 6.9 4.5c1.9 0 3.5 1 5.1 3 1.6-2 3.2-3 5.1-3 3.3 0 5.5 3.3 4.2 6.8-1.8 4.6-9.3 9.2-9.3 9.2z"/></svg>
+            </button>
+            </div>`
             )
             .join("")}
         </div>
@@ -173,6 +345,8 @@ function renderMenu() {
     .join("");
 
   $$(".card").forEach((c) => c.addEventListener("click", () => openItem(c.dataset.id)));
+  paintFavs();
+  applyFilters();
 
   // Highlight the tab of the section currently on screen.
   const tabs = $$(".cat-tab");
@@ -675,7 +849,9 @@ async function init() {
   cart = cart.filter((l) => itemsById.has(l.itemId));
 
   if (menu.onlineCard && $("#cardHint")) $("#cardHint").textContent = "(you'll pay securely online)";
+  wireFilters();
   renderMenu();
+  loadFavs();
   document.dispatchEvent(new CustomEvent("menu:ready", { detail: menu }));
   wireCart();
   wireCheckout();
