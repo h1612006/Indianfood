@@ -163,3 +163,26 @@ test("the admin can delete a comment", async () => {
   assert.equal(after.length, list.length - 1);
   assert.equal((await adminSend("DELETE", "/api/admin/comments/NOPE")).status, 404);
 });
+
+test("favourites are saved on the customer's account, ignore unknown dishes and need a customer", async () => {
+  const put = (body, tok = token) => fetch(base + "/api/customer/favorites", { method: "PUT", headers: { "Content-Type": "application/json", ...(tok ? { Authorization: "Bearer " + tok } : {}) }, body: JSON.stringify(body) });
+  assert.equal((await put({ favorites: ["classic-smash"] }, "")).status, 400, "signed-out visitors can't save");
+  const saved = await (await put({ favorites: ["classic-smash", "classic-smash", "not-a-dish", 42] })).json();
+  assert.deepEqual(saved.favorites, ["classic-smash"]);
+  const got = await (await fetch(base + "/api/customer/favorites", { headers: { Authorization: "Bearer " + token } })).json();
+  assert.deepEqual(got.favorites, ["classic-smash"]);
+  assert.equal((await put({ favorites: "nope" })).status, 400);
+  assert.deepEqual((await (await put({ favorites: [] })).json()).favorites, [], "clearing works");
+});
+
+test("the Veg and Spicy tags can be set on a dish and are kept when other fields are edited", async () => {
+  const items = (await (await adminGet("/api/admin/menu/items")).json()).items;
+  const item = items.find((i) => i.id === "classic-smash");
+  const base_ = { name: item.name, description: item.description, category: item.category, price: item.price, unit: item.unit || "", emoji: item.emoji || "🍔", image: item.image || "" };
+  assert.equal((await adminSend("PATCH", "/api/admin/menu/items/classic-smash", { ...base_, veg: true, spicy: true })).status, 200);
+  let pub = (await (await fetch(base + "/api/menu")).json()).items.find((i) => i.id === "classic-smash");
+  assert.deepEqual(pub.tags, ["veg", "spicy"]);
+  assert.equal((await adminSend("PATCH", "/api/admin/menu/items/classic-smash", { ...base_, price: item.price })).status, 200);
+  pub = (await (await fetch(base + "/api/menu")).json()).items.find((i) => i.id === "classic-smash");
+  assert.deepEqual(pub.tags, ["veg", "spicy"], "tags survive an edit that doesn't mention them");
+});
